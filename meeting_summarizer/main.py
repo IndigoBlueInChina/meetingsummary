@@ -8,6 +8,9 @@ import time
 from nltk.tokenize import sent_tokenize, word_tokenize
 import tiktoken
 import re
+import docx
+from pymupdf4llm import LlamaMarkdownReader
+from pathlib import Path
 
 # Download required NLTK data
 try:
@@ -268,7 +271,7 @@ class MeetingSummarizer:
         print(f"{combined_text}\n")
         
         prompt = f"""
-        You are an AI assistant specializing in professional meeting summaries. The input consists of multiple summarized chunks from a meeting, each corresponding to a portion of the discussion. Your task is to combine these chunks into a comprehensive and structured final summary. Ensure the output includes the following sections:
+        You are an AI assistant specializing in professional meeting summaries. The input consists of multiple summarized chunks from a meeting, each corresponding to a portion of the discussion. Your task is to combine these chunks into a comprehensive and structured final summary. The output includes the following sections, if the meeting content was not mession the sections, please ignore the sections:
 
             Key Topics and Agenda: A concise overview of the main topics discussed during the meeting.
             Discussion Highlights: Summarize the key points raised under each topic, preserving the flow and logical order.
@@ -277,7 +280,7 @@ class MeetingSummarizer:
             Questions Raised and Answers: Highlight significant questions raised and the answers or conclusions provided.
             Overall Conclusion: Provide a high-level summary encapsulating the entire meeting.
 
-        Make the final summary professional, well-organized, and formatted for easy understanding. Avoid redundancy, maintain accuracy, and ensure logical continuity across all sections. Use appropriate formatting (e.g., bullet points, numbered lists, or headings) to enhance readability.
+        Make the final summary professional, well-organized, and formatted for easy understanding. Avoid redundancy, maintain accuracy, and ensure logical continuity across all sections. Use appropriate formatting (e.g., bullet points, numbered lists, or headings) to enhance readability. Please keep language same as orignial transcript, do not translate it to other language.
         
         Individual summaries:
         {combined_text}
@@ -312,6 +315,33 @@ class MeetingSummarizer:
             print(f"Error generating final summary: {str(e)}")
             return None
 
+def read_file_content(file_path: str) -> str:
+    """
+    Read content from different file formats (txt, docx, pdf)
+    """
+    file_ext = Path(file_path).suffix.lower()
+    
+    try:
+        if file_ext == '.txt':
+            with open(file_path, 'r', encoding='utf-8') as file:
+                return file.read()
+                
+        elif file_ext == '.docx':
+            doc = docx.Document(file_path)
+            return '\n'.join([paragraph.text for paragraph in doc.paragraphs])
+            
+        elif file_ext == '.pdf':
+            md_read = LlamaMarkdownReader()
+            result = md_read.load_data(file_path)
+            return '\n'.join([doc.text for doc in result])
+            
+        else:
+            raise ValueError(f"Unsupported file format: {file_ext}")
+            
+    except Exception as e:
+        logging.error(f"Error reading file {file_path}: {str(e)}")
+        raise
+
 def main():
     # Initialize the summarizer
     summarizer = MeetingSummarizer()
@@ -331,18 +361,20 @@ def main():
     output_dir = os.path.join(os.path.dirname(__file__), "..", "summaries")
     os.makedirs(output_dir, exist_ok=True)
     
-    # Process transcripts
+    # Update file extension check
+    supported_extensions = ('.txt', '.docx', '.pdf')
+    
     for filename in os.listdir(input_dir):
-        if filename.endswith(".txt"):
+        if filename.lower().endswith(supported_extensions):
             try:
                 input_path = os.path.join(input_dir, filename)
                 timestamp = time.strftime("%Y%m%d_%H%M%S")
-                base_output_name = f"{filename[:-4]}_{timestamp}"
+                base_output_name = f"{Path(filename).stem}_{timestamp}"
                 json_output_path = os.path.join(output_dir, f"{base_output_name}_summary.json")
                 md_output_path = os.path.join(output_dir, f"{base_output_name}_summary.md")
                 
-                with open(input_path, 'r', encoding='utf-8') as file:
-                    transcript = file.read()
+                logging.info(f"Processing file: {filename}")
+                transcript = read_file_content(input_path)
                 
                 summary = summarizer.process_transcript(transcript)
                 print("\nsummary:")
@@ -355,7 +387,7 @@ def main():
                     
                     # Save Markdown summary
                     with open(md_output_path, 'w', encoding='utf-8') as file:
-                        file.write(f"# Meeting Summary: {filename[:-4]}\n\n")
+                        file.write(f"# Meeting Summary: {Path(filename).stem}\n\n")
                         file.write(summary['final_summary'])
                     
                     logging.info(f"Successfully saved summaries to {json_output_path} and {md_output_path}")

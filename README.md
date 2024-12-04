@@ -86,6 +86,10 @@ The tool generates JSON files containing:
 - Meeting metadata
 - Key decisions and action items
 - Timestamp information
+
+The tool genegrates markdown files containing:
+- Final comprehensive summary
+  
 ## Configuration
 
 Key parameters in `main.py`:
