@@ -1,7 +1,7 @@
 import nltk
 import logging
 import os
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, Any
 import json
 import requests
 import time
@@ -11,6 +11,7 @@ import re
 import docx
 from pymupdf4llm import LlamaMarkdownReader
 from pathlib import Path
+from llm_factory import LLMFactory
 
 # Download required NLTK data
 try:
@@ -171,12 +172,16 @@ class TranscriptChunker:
 
 class MeetingSummarizer:
     def __init__(self, 
-                 model_name: str = "qwen2.5", 
-                 api_url: str = "http://localhost:11434",
-                 max_tokens: int = 4000):
-        self.model_name = model_name
-        self.api_url = api_url
-        self.chunker = TranscriptChunker(max_tokens)
+                 provider_type: str = "ollama",
+                 provider_config: Dict[str, Any] = None):
+        if provider_config is None:
+            provider_config = {
+                "model_name": "qwen2.5",
+                "api_url": "http://localhost:11434"
+            }
+        
+        self.llm = LLMFactory.create_provider(provider_type, **provider_config)
+        self.chunker = TranscriptChunker(max_tokens=4000)
         self.logger = logging.getLogger(__name__)
 
     def generate_chunk_summary(self, chunk: str, chunk_index: int, total_chunks: int) -> Optional[Dict]:
@@ -203,30 +208,42 @@ class MeetingSummarizer:
         2. Key decisions made (if any)
         3. Action items mentioned (if any)
         4. Important details that should be connected with other parts
+        5. Extract 5-10 key terms/phrases that best represent the content
+        6. Identify the primary knowledge domains/fields this content belongs to (e.g., Technology, Business, Healthcare, etc.)
+
+        Format the key terms and domains in JSON format at the end of your response like this:
+        ---
+        {{"key_terms": ["term1", "term2", "term3", ...], "domains": ["domain1", "domain2", ...]}}
+        ---
 
         Here's the transcript section:
         {chunk}
         """
         
         try:
-            response = requests.post(
-                f"{self.api_url}/api/generate",
-                json={
-                    "model": self.model_name,
-                    "prompt": prompt,
-                    "stream": False
-                },
-                timeout=300
-            )
-            response.raise_for_status()
+            response_text = self.llm.generate(prompt)
+            if not response_text:
+                return None
+                
+            print("\nresponse_text:")
+            print(f"{response_text}\n")     
             
-            summary = response.json()["response"]
-            print(f"\nChunk {chunk_index + 1} Summary:")
-            print(f"{summary}\n")
+            if "---" in response_text:
+                summary_part, json_part = response_text.split("---")[-2:]
+            else:
+                summary_part = response_text
+                json_part = '{"key_terms": [], "domains": []}'
+            
+            try:
+                metadata = json.loads(json_part.strip())
+            except:
+                metadata = {"key_terms": [], "domains": []}
             
             return {
                 "chunk_index": chunk_index,
-                "summary": summary,
+                "summary": summary_part.strip(),
+                "key_terms": metadata["key_terms"],
+                "domains": metadata["domains"],
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
             }
             
@@ -256,61 +273,63 @@ class MeetingSummarizer:
             return self.combine_summaries(chunk_summaries)
         return None
 
-    def combine_summaries(self, chunk_summaries: List[Dict]) -> Dict:
+    def combine_summaries(self, chunk_summaries: List[Dict]) -> Optional[Dict]:
         """
         Combine chunk summaries into a final summary.
         """
-        print(f"\n{'='*80}")
-        print("Generating final summary...")
+        # Collect all key terms and domains
+        all_key_terms = []
+        all_domains = []
+        for summary in chunk_summaries:
+            all_key_terms.extend(summary.get("key_terms", []))
+            all_domains.extend(summary.get("domains", []))
+        
+        # Remove duplicates while preserving order
+        unique_key_terms = list(dict.fromkeys(all_key_terms))
+        unique_domains = list(dict.fromkeys(all_domains))
         
         combined_text = "\n\n".join([
             f"Part {summary['chunk_index'] + 1}:\n{summary['summary']}"
             for summary in chunk_summaries
         ])
-        print("\ncombined_text:")
-        print(f"{combined_text}\n")
         
         prompt = f"""
-        You are an AI assistant specializing in professional meeting summaries. The input consists of multiple summarized chunks from a meeting, each corresponding to a portion of the discussion. Your task is to combine these chunks into a comprehensive and structured final summary. The output includes the following sections, if the meeting content was not mession the sections, please ignore the sections:
+        You are an AI assistant specializing in professional meeting summaries. The input consists of multiple summarized chunks from a meeting. Your task is to combine these into a comprehensive summary with the following sections:
 
-            Key Topics and Agenda: A concise overview of the main topics discussed during the meeting.
-            Discussion Highlights: Summarize the key points raised under each topic, preserving the flow and logical order.
-            Decisions Made: Clearly outline the decisions and agreements reached.
-            Action Items: List all actionable tasks, their owners, and deadlines if mentioned.
-            Questions Raised and Answers: Highlight significant questions raised and the answers or conclusions provided.
-            Overall Conclusion: Provide a high-level summary encapsulating the entire meeting.
+            Knowledge Domains: Analyze and categorize the main fields/domains discussed, explaining their relevance.
+            Key Terms Glossary: Organize and explain the key terms by domain/category.
+            Key Topics and Agenda: A concise overview of the main topics discussed.
+            Discussion Highlights: Summarize the key points under each topic.
+            Decisions Made: Outline the decisions and agreements reached.
+            Action Items: List actionable tasks, owners, and deadlines if mentioned.
+            Questions Raised and Answers: Highlight significant questions and answers.
+            Overall Conclusion: Provide a high-level summary.
 
-        Make the final summary professional, well-organized, and formatted for easy understanding. Avoid redundancy, maintain accuracy, and ensure logical continuity across all sections. Use appropriate formatting (e.g., bullet points, numbered lists, or headings) to enhance readability. Please keep language same as orignial transcript, do not translate it to other language.
+        Make the final summary professional and well-organized. Keep language same as original transcript. 用中文
+        
+        Known domains: {unique_domains}
+        Known key terms: {unique_key_terms}
         
         Individual summaries:
         {combined_text}
         """
         
         try:
-            response = requests.post(
-                f"{self.api_url}/api/generate",
-                json={
-                    "model": self.model_name,
-                    "prompt": prompt,
-                    "stream": False
-                },
-                timeout=300
-            )
-            response.raise_for_status()
-            
-            final_summary = response.json()["response"]
-            print("\nFinal Summary:")
-            print(f"{final_summary}\n")
-            
+            final_summary = self.llm.generate(prompt)
+            if not final_summary:
+                return None
+                
             return {
                 "final_summary": final_summary,
                 "metadata": {
                     "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "model_used": self.model_name,
+                    "model_used": str(self.llm.__class__.__name__),
                     "number_of_chunks": len(chunk_summaries),
+                    "key_terms": unique_key_terms,
+                    "domains": unique_domains
                 }
             }
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             self.logger.error(f"Error generating final summary: {str(e)}")
             print(f"Error generating final summary: {str(e)}")
             return None
