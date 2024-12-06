@@ -7,6 +7,8 @@ from pydub.utils import make_chunks
 import tempfile
 import wave
 import time
+import psutil
+import humanize
 
 def list_audio_devices():
     # 列出所有支持录音的设备（包含虚拟声卡）
@@ -15,6 +17,76 @@ def list_audio_devices():
     for i, mic in enumerate(mics):
         print(f"{i}: {mic.name}")
     return mics
+
+def get_disk_space(path):
+    """获取磁盘空间信息"""
+    disk = psutil.disk_usage(path)
+    return {
+        'total': humanize.naturalsize(disk.total),
+        'used': humanize.naturalsize(disk.used),
+        'free': humanize.naturalsize(disk.free),
+        'percent': disk.percent
+    }
+
+def merge_wav_files(wav_files, output_file):
+    """合并多个WAV文件"""
+    if not wav_files:
+        return None
+        
+    try:
+        # 读取第一个文件作为基础
+        combined = AudioSegment.from_wav(wav_files[0])
+        
+        # 添加其余文件
+        for wav_file in wav_files[1:]:
+            audio = AudioSegment.from_wav(wav_file)
+            combined += audio
+            
+        # 导出合并后的文件
+        combined.export(output_file, format="wav")
+        return output_file
+    except Exception as e:
+        print(f"合并音频文件失败: {str(e)}")
+        return None
+
+def format_time(seconds):
+    """格式化时间为 HH:MM:SS"""
+    return time.strftime('%H:%M:%S', time.gmtime(seconds))
+
+class RecordingStatus:
+    def __init__(self):
+        self.start_time = None
+        self.duration = 0
+        self.saved_segments = 0
+        self.total_size = 0
+        self.disk_space = None
+        
+    def start(self):
+        self.start_time = time.time()
+        self.duration = 0
+        self.saved_segments = 0
+        self.total_size = 0
+        self.update_disk_space()
+        
+    def update(self, new_segment_file=None):
+        if self.start_time:
+            self.duration = time.time() - self.start_time
+            
+        if new_segment_file:
+            self.saved_segments += 1
+            self.total_size += os.path.getsize(new_segment_file)
+            self.update_disk_space()
+            
+    def update_disk_space(self):
+        self.disk_space = get_disk_space('transcripts')
+        
+    def get_status(self):
+        return {
+            'duration': format_time(self.duration),
+            'segments': self.saved_segments,
+            'total_size': humanize.naturalsize(self.total_size),
+            'disk_space': self.disk_space
+        }
 
 def record_audio(device_index=None, sample_rate=44100, segment_duration=300):  # 默认5分钟一段
     """
@@ -49,13 +121,24 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300):  #
     frames_per_segment = int(segment_duration * sample_rate)  # 每段的帧数
     saved_files = []
     
+    status = RecordingStatus()
+    status.start()
+    
     try:
         with mic.recorder(samplerate=sample_rate) as recorder:
             while not record_audio.stop_flag:
-                # 每次录制一小段（0.1秒）
                 data = recorder.record(numframes=int(sample_rate * 0.1))
                 recorded_frames.append(data)
                 frame_count += len(data)
+                
+                # 更新状态
+                status.update()
+                
+                # 检查剩余磁盘空间
+                if status.disk_space['percent'] > 90:  # 磁盘使用超过90%
+                    print("警告：磁盘空间不足")
+                    record_audio.stop_flag = True
+                    break
                 
                 # 检查是否需要保存当前段
                 if frame_count >= frames_per_segment:
@@ -66,7 +149,8 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300):  #
                         sample_rate
                     )
                     saved_files.append(segment_file)
-                    recorded_frames = []  # 清空缓存
+                    status.update(segment_file)  # 更新状态
+                    recorded_frames = []
                     frame_count = 0
                     segment_count += 1
                     print(f"已保存录音片段 {segment_count}")
@@ -80,13 +164,20 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300):  #
                     sample_rate
                 )
                 saved_files.append(segment_file)
+                status.update(segment_file)
+        
+        # 合并所有片段
+        if len(saved_files) > 1:
+            merged_file = f"{base_filename}_merged.wav"
+            if merge_wav_files(saved_files, merged_file):
+                saved_files.append(merged_file)
         
         print(f"录音完成，共保存 {len(saved_files)} 个片段")
-        return saved_files
+        return saved_files, status.get_status()
         
     except Exception as e:
         print(f"录音错误: {str(e)}")
-        return None
+        return None, None
     finally:
         record_audio.stop_flag = False
 
@@ -128,7 +219,7 @@ if __name__ == "__main__":
         device_index = None
         if len(available_devices) > 1:
             try:
-                device_num = int(input("\n请选择声卡设备编号 (直接回车使用默认设备): ").strip())
+                device_num = int(input("\n请选择声卡设备编号 (直接回��使用默认设备): ").strip())
                 if 0 <= device_num < len(available_devices):
                     device_index = device_num
             except ValueError:
