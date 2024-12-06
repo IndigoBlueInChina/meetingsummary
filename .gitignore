@@ -1,0 +1,7 @@
+
+/meeting_summarizer/__pycache__
+meeting_summarizer/meeting_summarizer.log
+/meeting_summarizer/record_audio/__pycache__
+/meeting_summarizer/record_audio/transcripts
+poetry.lock
+transcripts/*.*

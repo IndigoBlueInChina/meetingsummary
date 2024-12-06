@@ -3,6 +3,22 @@
 ## Project Overview:
 The project aims to develop a Python-based AI script that generates summaries of meeting transcriptions from written text files. The script must utilize a locally installed Large Language Model (LLM), as we require an open-source solution that can be deployed on our Windows 11 PC with an Nvidia GPU and CUDA installed.
 
+User Case:
+用户希望记录并及时总结会议内容，但不希望会议信息上传到网络上。同时，用户本地部署了大模型，可以用于会议记录的整理和总结。
+
+用户输入：
+会议音频文件 或者 会议记录 transcript
+
+用户交互：
+开启录音机录制会议音频，可选本地麦克风。会议结束，将音频文件转会议记录文字稿。
+
+输出：
+根据会议主题和内容摘要，重新校对的会议记录中的错误用词。 
+根据会议记录，总结会议要点
+
+
+
+
 ## Project Deliverables:
 
 -    An AI script written in Python that can summarize meeting transcriptions.
