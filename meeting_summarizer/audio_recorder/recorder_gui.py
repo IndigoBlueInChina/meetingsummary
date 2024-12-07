@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
 import threading
-from record_audio import list_audio_devices, record_audio
+from recorder import list_audio_devices, record_audio
 import time
 
 class AudioRecorderGUI:
