@@ -1,133 +1,120 @@
 # meetingsummary
 
-## Project Overview:
-The project aims to develop a Python-based AI script that generates summaries of meeting transcriptions from written text files. The script must utilize a locally installed Large Language Model (LLM), as we require an open-source solution that can be deployed on our Windows 11 PC with an Nvidia GPU and CUDA installed.
+## 项目概述
+本项目是一个基于 Python 的本地会议记录工具，能够录制会议音频并生成会议总结。项目使用本地部署的大语言模型，确保数据隐私安全。
 
-## Project Deliverables:
+## 主要功能
 
--    An AI script written in Python that can summarize meeting transcriptions.
--    Integration with an open-source LLM suitable for local deployment.
--    Documentation and support for the deployment and operation of the script.
+### 1. 音频录制
+- ✅ 支持系统声音录制
+- ✅ 支持麦克风输入（可选）
+- ✅ 实时录音状态显示
+- ✅ 暂停/继续功能
+- ✅ 自动分段保存
+- ✅ 录音时长显示
 
-# Meeting Summarizer
+### 2. 音频转写
+- ✅ 使用 FunASR 进行本地语音识别
+- ✅ 支持中文语音识别
+- ✅ 自动标点符号
+- ✅ 支持长音频处理
 
-An intelligent meeting transcript summarization tool that processes both timestamped and plain text transcripts using LLMs.
+### 3. 会议总结（开发中）
+- 🚧 使用本地 LLM 生成会议摘要
+- 🚧 提取关键决策点
+- 🚧 识别行动项目
 
-## Features
+## 技术栈
+- Python 3.11
+- PyQt6 用于图形界面
+- FunASR 用于语音识别
+- soundcard 用于音频录制
+- numpy 用于音频处理
+- matplotlib 用于音频波形显示
 
-- 🔍 Automatic format detection (timestamped/plain text)
-- 📊 Smart chunking based on content and speakers
-- ⚡ Efficient token management
-- 🔄 Multi-stage summarization process
-- 🌐 Works with local LLMs via Ollama
-- 📝 Preserves chronological context
-- 🎯 Extracts key decisions and action items
+## 安装说明
 
-## Requirements
-
+### 环境要求
 - Python 3.11
 - Ollama installed and running
 - Qwen 2.5 model pulled in Ollama
 - NLTK data
 
-## Quick Start
+### 安装步骤
 
-
-### Create and activate virtual environment
-
-1. **Setup Environment**
-   
-### Install dependencies
-Using poetry to manage dependencies. 
-
-```
+1. 克隆仓库
+```bash
+git clone [repository-url]
 cd meetingsummary
+```
+
+2. 安装依赖
+```bash
 pip install poetry
-poetry install 
-
+poetry install
 ```
 
-2. **Prepare Directory Structure**
-```
-meetingsummary/ 
-  ├── meeting_summarizer/ 
-  │ └── main.py 
-  ├── transcripts/ # Put your transcript files here 
-  │ └── your_meeting.txt 
-  └── summaries/ # Generated summaries will be here
+3. 运行程序
+```bash
+poetry run python meeting_summarizer/main_window.py
 ```
 
+## 使用说明
 
-3. **Run the Summarizer**
+### 录音功能
+1. 点击"开始录音"按钮开始录制
+2. 可选择是否启用麦克风输入
+3. 录音过程中可以暂停/继续
+4. 点击"结束"按钮停止录音
+5. 录音文件会自动保存在项目目录下的 audio 文件夹中
 
+### 音频转写
+1. 录音结束后自动进入转写页面
+2. 使用 FunASR 进行本地语音识别
+3. 转写结果保存在 transcript 文件夹中
+
+## 项目结构
 ```
-cd meeting_summarizer
-python main.py
+meetingsummary/
+├── meeting_summarizer/
+│   ├── audio_recorder/
+│   │   ├── recorder.py        # 音频录制核心功能
+│   │   └── status.py         # 录音状态管理
+│   ├── speech_to_text/
+│   │   └── transcriber.py    # 语音识别模块
+│   ├── text_processor/
+│   │   └── summarizer.py     # 文本处理模块（开发中）
+│   ├── utils/
+│   │   └── project_manager.py # 项目管理工具
+│   ├── main_window.py        # 主窗口和程序入口
+│   ├── recording_window.py   # 录音界面
+│   └── processing_window.py  # 处理界面
+├── projects/                 # 项目文件存储
+│   └── [项目名称]/
+│       ├── audio/           # 录音文件
+│       ├── transcript/      # 转写文本
+│       └── summary/        # 会议总结
+└── poetry.lock              # 依赖版本锁定文件
 ```
 
+## 开发计划
 
-
-## Input Format Support
-
-### Timestamped Format
-[00:00:00] Speaker A: Hello everyone
-[00:00:05] Speaker B: Hi there
-
-### Plain Text Format
-Speaker A: Hello everyone
-Speaker B: Hi there
-
-
-## Output Format
-
-The tool generates JSON files containing:
-- Individual chunk summaries
-- Final comprehensive summary
-- Meeting metadata
-- Key decisions and action items
-- Timestamp information
-
-The tool genegrates markdown files containing:
-- Final comprehensive summary
+- [ ] 优化会议总结功能，提取关键决策点，识别行动项目
+- [ ] 增加会议总结模版功能，用户可选择模版生成会议总结，或者自定义模版
+- [ ] 增加会议总结导出功能，支持导出为 PDF 格式，Word 格式，Markdown 格式
+- [ ] 增加历史会议记录功能，用户可查看历史会议记录，并进行编辑，删除，导出等操作
+- [ ] 改进用户界面，优化图标，优化布局
+- [ ] 修复波形图显示问题
+- [ ] 添加配置选项，Ollama 模型地址配置，OpenAI API Key 配置
+- [ ] 添加配置选项，录音文件保存路径配置
+- [ ] 增加各平台打包功能，Windows，Mac，Linux 
+- [ ] 增加录音文件导入功能，支持导入已有的录音文件
   
-## Configuration
+  
 
-Key parameters in `main.py`:
-- `max_tokens`: Maximum tokens per chunk (default: 4000)
-- `model_name`: LLM model name (default: "qwen2.5")
-- `api_url`: Ollama API endpoint (default: "http://localhost:11434")
 
-## Design Principles
+## 贡献指南
+欢迎提交 Issue 和 Pull Request 来帮助改进项目。
 
-1. **Robust Text Processing**
-   - Automatic format detection
-   - Smart chunking based on content semantics
-   - Speaker-aware segmentation
-
-2. **Context Preservation**
-   - Maintains chronological order
-   - Preserves speaker information
-   - Retains timestamp context when available
-
-3. **Efficient Processing**
-   - Token-aware chunking
-   - Rate limiting for API calls
-   - Error handling and logging
-
-## Limitations
-
-- Requires local LLM setup via Ollama
-- Processing speed depends on local hardware
-- Maximum chunk size limited by LLM context window
-
-## Contributing
-
-Feel free to open issues or submit pull requests for:
-- Bug fixes
-- Feature additions
-- Documentation improvements
-- Performance optimizations
-
-## License
-
-MIT License - feel free to use and modify as needed.
+## 许可证
+MIT License
