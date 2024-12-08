@@ -101,6 +101,24 @@ class SenseVoiceTranscriber:
                     self.logger.error(f"Error processing {audio_file}: {str(e)}")
                     continue
 
+# 全局变量用于缓存转录器实例
+_transcriber = None
+
+def get_transcriber():
+    global _transcriber
+    if _transcriber is None:
+        _transcriber = SenseVoiceTranscriber()
+    return _transcriber
+
+def transcribe_audio(audio_path):
+    """
+    转录音频文件的包装函数
+    :param audio_path: 音频文件路径
+    :return: 转录的文本
+    """
+    transcriber = get_transcriber()
+    return transcriber.transcribe_audio(audio_path)
+
 def main():
     # 配置日志
     logging.basicConfig(

@@ -9,6 +9,7 @@ import wave
 import time
 import psutil
 import humanize
+from pathlib import Path
 
 def list_audio_devices():
     # 列出所有支持录音的设备（包含虚拟声卡）
@@ -20,6 +21,10 @@ def list_audio_devices():
 
 def get_disk_space(path):
     """获取磁盘空间信息"""
+    # 如果路径不存在，使用父目录
+    while not os.path.exists(path):
+        path = os.path.dirname(path)
+    
     disk = psutil.disk_usage(path)
     return {
         'total': humanize.naturalsize(disk.total),
@@ -30,24 +35,66 @@ def get_disk_space(path):
 
 def merge_wav_files(wav_files, output_file):
     """合并多个WAV文件"""
-    if not wav_files:
-        return None
-        
     try:
-        # 读取第一个文件作为基础
-        combined = AudioSegment.from_wav(wav_files[0])
-        
-        # 添加其余文件
-        for wav_file in wav_files[1:]:
-            audio = AudioSegment.from_wav(wav_file)
-            combined += audio
+        if not wav_files:
+            print("没有需要合并的文件")
+            return False
             
+        print(f"\n=== 开始合并音频文件 ===")
+        print(f"需要合并的文件数量: {len(wav_files)}")
+        print(f"输出文件: {output_file}")
+        
+        # 使用第一个文件作为基础
+        print("读取第一个文件...")
+        combined = AudioSegment.from_wav(wav_files[0])
+        print(f"第一个文件长度: {len(combined)/1000:.2f}秒")
+        
+        # 合并其余文件
+        for i, wav_file in enumerate(wav_files[1:], 1):
+            try:
+                print(f"合并第 {i+1}/{len(wav_files)} 个文件: {os.path.basename(wav_file)}")
+                segment = AudioSegment.from_wav(wav_file)
+                combined += segment
+                print(f"当前合并后长度: {len(combined)/1000:.2f}秒")
+            except Exception as e:
+                print(f"合并文件 {wav_file} 时出错: {str(e)}")
+                return False
+        
+        # 确保输出目录存在
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        
         # 导出合并后的文件
+        print("正在导出合并后的文件...")
         combined.export(output_file, format="wav")
-        return output_file
+        print(f"音频文件合并成功: {output_file}")
+        print(f"最终文件长度: {len(combined)/1000:.2f}秒")
+        
+        # 清理临时文件
+        print("\n=== 清理临时文件 ===")
+        success = True
+        for temp_file in wav_files:
+            try:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+                    print(f"已删除临时文件: {os.path.basename(temp_file)}")
+            except Exception as e:
+                print(f"删除临时文件 {temp_file} 失败: {str(e)}")
+                success = False
+        
+        if success:
+            print("\n=== 音频合并完成 ===")
+        else:
+            print("\n=== 音频合并完成，但部分临时文件清理失败 ===")
+        
+        return success
+        
     except Exception as e:
-        print(f"合并音频文件失败: {str(e)}")
-        return None
+        print(f"\n!!! 合并音频文件时发生错误 !!!")
+        print(f"错误类型: {type(e).__name__}")
+        print(f"错误信息: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 def format_time(seconds):
     """格式化时间为 HH:MM:SS"""
@@ -88,37 +135,92 @@ class RecordingStatus:
             'disk_space': self.disk_space
         }
 
-def record_audio(device_index=None, sample_rate=44100, segment_duration=300):  # 默认5分钟一段
+def get_project_directory():
+    """获取项目保存目录"""
+    # 获取用户主目录
+    user_home = str(Path.home())
+    # 基础目录名称
+    base_dir = "meetingsummary"
+    # 创建基础目录
+    base_path = os.path.join(user_home, base_dir)
+    os.makedirs(base_path, exist_ok=True)
+    
+    # 创建本次会议的项目目录（使用时间戳）
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    project_dir = os.path.join(base_path, f"meeting_{timestamp}")
+    
+    # 如果目录已存在（极少概率），添加递增数字
+    counter = 1
+    original_project_dir = project_dir
+    while os.path.exists(project_dir):
+        project_dir = f"{original_project_dir}_{counter}"
+        counter += 1
+    
+    # 创建项目目录及子目录
+    os.makedirs(project_dir)
+    os.makedirs(os.path.join(project_dir, "audio"))  # 音频文件目录
+    os.makedirs(os.path.join(project_dir, "transcript"))  # 文字记录目录
+    os.makedirs(os.path.join(project_dir, "summary"))  # 会议纪要目录
+    
+    return project_dir
+
+def record_audio(device_index=None, sample_rate=44100, segment_duration=300, project_dir=None):
     """
     录制音频并自动分段保存
     :param device_index: 录音设备索引
     :param sample_rate: 采样率
     :param segment_duration: 每段录音的时长（秒）
+    :param project_dir: 项目目录（可选）
     """
+    print("\n=== 开始录音 ===")
+    # 初始化函数属性
+    if not hasattr(record_audio, 'stop_flag'):
+        record_audio.stop_flag = False
+    if not hasattr(record_audio, 'pause_flag'):
+        record_audio.pause_flag = False
+    if not hasattr(record_audio, 'use_microphone'):
+        record_audio.use_microphone = False
+
     # 确保输出目录存在
-    os.makedirs('transcripts', exist_ok=True)
+    if project_dir is None:
+        project_dir = 'transcripts'
+    os.makedirs(project_dir, exist_ok=True)
     
     # 生成基础文件名（使用时间戳）
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base_filename = f"transcripts/recording_{timestamp}"
+    base_filename = os.path.join(project_dir, f"recording_{timestamp}")
+    print(f"录音文件基础名: {os.path.basename(base_filename)}")
     
-    # 获取默认扬声器或指定扬声器
+    # 获取录音设备
     mics = sc.all_microphones(include_loopback=True)
     if not mics:
         raise RuntimeError("没有找到可用的录音设备")
     
     mic = mics[device_index] if device_index is not None else mics[0]
     
-    # 重置停止标志
-    record_audio.stop_flag = False
-    
+    # 如果启用麦克风且有可用的麦克风设备，尝试获取麦克风设备
+    mic_device = None
+    if record_audio.use_microphone:
+        try:
+            mic_devices = [m for m in sc.all_microphones() if not m.isloopback]
+            if mic_devices:
+                mic_device = mic_devices[0]
+            else:
+                print("警告：未找到可用的麦克风设备，将仅录制系统声音")
+                record_audio.use_microphone = False
+        except Exception as e:
+            print(f"警告：获取麦克风设备失败 ({str(e)})，将仅录制系统声音")
+            record_audio.use_microphone = False
+
     print(f"开始录音...")
     print(f"正在录制设备: {mic.name}")
+    if mic_device:
+        print(f"同时录制麦克风: {mic_device.name}")
     
     recorded_frames = []
     segment_count = 0
     frame_count = 0
-    frames_per_segment = int(segment_duration * sample_rate)  # 每段的帧数
+    frames_per_segment = int(segment_duration * sample_rate)
     saved_files = []
     
     status = RecordingStatus()
@@ -126,36 +228,80 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300):  #
     
     try:
         with mic.recorder(samplerate=sample_rate) as recorder:
-            while not record_audio.stop_flag:
-                data = recorder.record(numframes=int(sample_rate * 0.1))
-                recorded_frames.append(data)
-                frame_count += len(data)
-                
-                # 更新状态
-                status.update()
-                
-                # 检查剩余磁盘空间
-                if status.disk_space['percent'] > 90:  # 磁盘使用超过90%
-                    print("警告：磁盘空间不足")
-                    record_audio.stop_flag = True
-                    break
-                
-                # 检查是否需要保存当前段
-                if frame_count >= frames_per_segment:
-                    segment_file = save_segment(
-                        recorded_frames, 
-                        base_filename, 
-                        segment_count, 
-                        sample_rate
-                    )
-                    saved_files.append(segment_file)
-                    status.update(segment_file)  # 更新状态
-                    recorded_frames = []
-                    frame_count = 0
-                    segment_count += 1
-                    print(f"已保存录音片段 {segment_count}")
+            print("录音设备初始化成功")
+            mic_recorder = None
+            if mic_device:
+                try:
+                    mic_recorder = mic_device.recorder(samplerate=sample_rate)
+                    mic_recorder.__enter__()
+                    print("麦克风设备初始化成功")
+                except Exception as e:
+                    print(f"麦克风初始化失败: {str(e)}")
+                    mic_recorder = None
             
-            # 保存最后一段
+            while not record_audio.stop_flag:
+                try:
+                    if record_audio.pause_flag:
+                        time.sleep(0.1)
+                        continue
+                    
+                    # 录制系统声音
+                    data = recorder.record(numframes=int(sample_rate * 0.1))
+                    
+                    # 如果启用麦克风，混合麦克风输入
+                    if mic_recorder:
+                        try:
+                            mic_data = mic_recorder.record(numframes=int(sample_rate * 0.1))
+                            data = np.mean([data, mic_data], axis=0)
+                        except Exception as e:
+                            print(f"麦克风录音错误: {str(e)}")
+                            mic_recorder = None
+                    
+                    recorded_frames.append(data)
+                    frame_count += len(data)
+                    
+                    # 更新状态
+                    status.update()
+                    
+                    # 检查剩余磁盘空间
+                    if status.disk_space and status.disk_space['percent'] > 90:
+                        print("警告：磁盘空间不足")
+                        record_audio.stop_flag = True
+                        break
+                    
+                    # 检查是否需要保存当前段
+                    if frame_count >= frames_per_segment:
+                        segment_file = save_segment(
+                            recorded_frames, 
+                            base_filename, 
+                            segment_count, 
+                            sample_rate
+                        )
+                        if segment_file:
+                            saved_files.append(segment_file)
+                            status.update(segment_file)
+                            print(f"已保存录音片段 {segment_count + 1}")
+                        recorded_frames = []
+                        frame_count = 0
+                        segment_count += 1
+                        
+                except Exception as e:
+                    print(f"录音循环中发生错误: {str(e)}")
+                    if "Input overflowed" not in str(e):
+                        time.sleep(0.1)
+                    continue
+            
+            print("\n=== 录音停止，开始处理数据 ===")
+            
+            # 关闭麦克风录音器
+            if mic_recorder:
+                try:
+                    mic_recorder.__exit__(None, None, None)
+                    print("麦克风录音器已关闭")
+                except Exception as e:
+                    print(f"关闭麦克风录音器时出错: {str(e)}")
+            
+            # 保存最后一段录音（如果有）
             if recorded_frames:
                 segment_file = save_segment(
                     recorded_frames, 
@@ -163,23 +309,40 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300):  #
                     segment_count, 
                     sample_rate
                 )
-                saved_files.append(segment_file)
-                status.update(segment_file)
-        
-        # 合并所有片段
-        if len(saved_files) > 1:
-            merged_file = f"{base_filename}_merged.wav"
-            if merge_wav_files(saved_files, merged_file):
-                saved_files.append(merged_file)
-        
-        print(f"录音完成，共保存 {len(saved_files)} 个片段")
-        return saved_files, status.get_status()
-        
+                if segment_file:
+                    saved_files.append(segment_file)
+                    status.update(segment_file)
+                    print(f"已保存最后一段录音")
+            
+            # 合并所有片段
+            if saved_files:
+                if len(saved_files) > 1:
+                    merged_file = f"{base_filename}_merged.wav"
+                    if merge_wav_files(saved_files, merged_file):
+                        print(f"已合并所有录音片段: {merged_file}")
+                        return [merged_file], status.get_status()
+                    else:
+                        print("合并音频文件失败，返回原始分段文件")
+                        return saved_files, status.get_status()
+                else:
+                    print(f"只有一个录音片段，无需合并")
+                    return saved_files, status.get_status()
+            
+            print("没有录音文件需要处理")
+            return [], status.get_status()
+            
     except Exception as e:
-        print(f"录音错误: {str(e)}")
-        return None, None
+        print(f"录音过程中发生错误: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        if saved_files:
+            return saved_files, status.get_status()
+        return [], status.get_status()
     finally:
+        # 重置所有标志
         record_audio.stop_flag = False
+        record_audio.pause_flag = False
+        record_audio.use_microphone = False
 
 def save_segment(frames, base_filename, segment_count, sample_rate):
     """保存单个录音片段"""
@@ -201,9 +364,6 @@ def save_segment(frames, base_filename, segment_count, sample_rate):
     
     return segment_filename
 
-# 添加停止标志
-record_audio.stop_flag = False
-
 if __name__ == "__main__":
     print("开始运行录音程序...")
     try:
@@ -219,7 +379,7 @@ if __name__ == "__main__":
         device_index = None
         if len(available_devices) > 1:
             try:
-                device_num = int(input("\n请选择声卡设备编号 (直接回��使用默认设备): ").strip())
+                device_num = int(input("\n请选择声卡设备编号 (直接回车使用默认设备): ").strip())
                 if 0 <= device_num < len(available_devices):
                     device_index = device_num
             except ValueError:
@@ -232,4 +392,4 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
     finally:
-        print("程序结束") 
+        print("程序结束")
