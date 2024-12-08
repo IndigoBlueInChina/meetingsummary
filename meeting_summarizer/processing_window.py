@@ -32,9 +32,12 @@ class ProcessingThread(QThread):
             os.makedirs(os.path.dirname(transcript_file), exist_ok=True)
             
             # 开始音频转写
-            transcript_text = transcribe_audio(self.audio_file)
-            if not transcript_text:
-                raise Exception("音频转写失败：无法获取转写结果")
+            try:
+                transcript_text = transcribe_audio(self.audio_file)
+                if not transcript_text or transcript_text.strip() == "":
+                    raise Exception("转写结果为空")
+            except Exception as e:
+                raise Exception(f"音频转写失败：{str(e)}")
                 
             # 保存转写文本
             with open(transcript_file, "w", encoding="utf-8") as f:
@@ -55,9 +58,12 @@ class ProcessingThread(QThread):
             os.makedirs(os.path.dirname(summary_file), exist_ok=True)
             
             # 生成会议总结
-            summary_text = generate_summary(transcript_text, summary_file)
-            if not summary_text:
-                raise Exception("会议总结生成失败：无法生成总结")
+            try:
+                summary_text = generate_summary(transcript_text, summary_file)
+                if not summary_text or summary_text.strip() == "":
+                    raise Exception("生成的总结内容为空")
+            except Exception as e:
+                raise Exception(f"会议总结生成失败：{str(e)}")
             
             self.progress_updated.emit("会议总结生成完成", 100)
             self.finished.emit(True, summary_file)
