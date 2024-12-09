@@ -1,3 +1,4 @@
+from meeting_summarizer.utils import project_manager
 import soundcard as sc
 import numpy as np
 import os
@@ -10,6 +11,7 @@ import time
 import psutil
 import humanize
 from pathlib import Path
+from utils.project_manager import project_manager
 
 def list_audio_devices():
     # 列出所有支持录音的设备（包含虚拟声卡）
@@ -135,34 +137,6 @@ class RecordingStatus:
             'disk_space': self.disk_space
         }
 
-def get_project_directory():
-    """获取项目保存目录"""
-    # 获取用户主目录
-    user_home = str(Path.home())
-    # 基础目录名称
-    base_dir = "meetingsummary"
-    # 创建基础目录
-    base_path = os.path.join(user_home, base_dir)
-    os.makedirs(base_path, exist_ok=True)
-    
-    # 创建本次会议的项目目录（使用时间戳）
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-    project_dir = os.path.join(base_path, f"meeting_{timestamp}")
-    
-    # 如果目录已存在（极少概率），添加递增数字
-    counter = 1
-    original_project_dir = project_dir
-    while os.path.exists(project_dir):
-        project_dir = f"{original_project_dir}_{counter}"
-        counter += 1
-    
-    # 创建项目目录及子目录
-    os.makedirs(project_dir)
-    os.makedirs(os.path.join(project_dir, "audio"))  # 音频文件目录
-    os.makedirs(os.path.join(project_dir, "transcript"))  # 文字记录目录
-    os.makedirs(os.path.join(project_dir, "summary"))  # 会议纪要目录
-    
-    return project_dir
 
 def record_audio(device_index=None, sample_rate=44100, segment_duration=300, project_dir=None):
     """
@@ -183,7 +157,7 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
 
     # 确保输出目录存在
     if project_dir is None:
-        project_dir = 'transcripts'
+        project_dir = project_manager.get_audio_dir()
     os.makedirs(project_dir, exist_ok=True)
     
     # 生成基础文件名（使用时间戳）
