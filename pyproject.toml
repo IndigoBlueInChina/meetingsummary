@@ -39,6 +39,7 @@ sortedcontainers = "^2.4.0"
 torchaudio = "^2.2.0"
 matplotlib = "^3.8.2"
 pyqt6 = "^6.7.1"
+pyqtgraph = "^0.13.7"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.4"

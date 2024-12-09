@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                             QLabel, QComboBox)
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont
+import pyqtgraph as pg
 from datetime import datetime
 import threading
 import time
@@ -25,6 +26,13 @@ class RecordingWidget(QWidget):
         self.recording_thread = None
         self.available_devices = []
         
+        # 初始化波形图数据
+        self.waveform_data = []
+        self.data_index = 0
+        self.plot_timer = QTimer()
+        self.plot_timer.timeout.connect(self.update_waveform)
+        self.plot_timer.start(50)  # 每50ms更新一次波形图
+        
         # 创建新项目
         project_manager.create_project()
         print(f"项目目录已创建: {project_manager.get_current_project()}")
@@ -38,19 +46,24 @@ class RecordingWidget(QWidget):
         title.setFont(QFont("Arial", 24, QFont.Weight.Bold))
         self.layout().addWidget(title)
 
+        # 添加波形图
+        self.plot_widget = pg.PlotWidget()
+        self.plot_widget.setBackground('w')  # 设置白色背景
+        self.plot_widget.setMinimumHeight(100)  # 设置最小高度
+        self.plot_widget.showGrid(False, False)  # 关闭网格线
+        self.plot_widget.getAxis('left').hide()  # 隐藏Y轴
+        self.plot_widget.getAxis('bottom').hide()  # 隐藏X轴
+        self.plot_curve = self.plot_widget.plot(pen=pg.mkPen(color=(51, 204, 255), width=2))
+        self.layout().addWidget(self.plot_widget)
+        
         # 录音时长显示
         self.duration_label = QLabel("录音时长")
         self.duration_label.setFont(QFont("Arial", 12))
         self.layout().addWidget(self.duration_label)
 
         self.time_label = QLabel("0分钟")
-        self.time_label.setFont(QFont("Arial", 36, QFont.Weight.Bold))
+        self.time_label.setFont(QFont("Arial", 18, QFont.Weight.Bold))
         self.layout().addWidget(self.time_label)
-
-        # 今日录音时长变化
-        self.change_label = QLabel("今天 +0%")
-        self.change_label.setStyleSheet("color: #00CC00;")
-        self.layout().addWidget(self.change_label)
 
         # 录音设备选择
         device_layout = QHBoxLayout()
@@ -96,6 +109,8 @@ class RecordingWidget(QWidget):
         self.status_label = QLabel("点击'开始录音'开始会议录制")
         self.status_label.setStyleSheet("color: #666666;")
         self.layout().addWidget(self.status_label)
+
+
 
         # 设置按钮样式
         self.setStyleSheet("""
@@ -244,6 +259,11 @@ class RecordingWidget(QWidget):
                 print("录音已在进行中")
                 return
             
+            # 重置波形图数据
+            self.waveform_data = []
+            self.data_index = 0
+            self.plot_curve.setData([])
+            
             # 重置停止标志
             record_audio.stop_flag = False
             record_audio.pause_flag = False
@@ -310,6 +330,21 @@ class RecordingWidget(QWidget):
             self.stop_button.setEnabled(False)
             self.record_button.setText("开始录音")
 
+    def update_waveform(self):
+        """更新波形图"""
+        if self.is_recording and not self.is_paused:
+            # 获取音频数据
+            if hasattr(record_audio, 'current_audio_data'):
+                data = record_audio.current_audio_data
+                if data is not None and len(data) > 0:
+                    # 将数据添加到波形图数据列表
+                    self.waveform_data.extend(data)
+                    # 保持最近的1000个数据点
+                    if len(self.waveform_data) > 1000:
+                        self.waveform_data = self.waveform_data[-1000:]
+                    # 更新波形图
+                    self.plot_curve.setData(self.waveform_data)
+
     def stop_recording(self):
         """停止录音"""
         try:
@@ -318,7 +353,9 @@ class RecordingWidget(QWidget):
                 print("当前没有录音在进行")
                 return
 
-            print("正在停止录音...")
+            # 清空波形图
+            self.waveform_data = []
+            self.plot_curve.setData([])
             
             # 禁用按钮，防止重复点击
             self.stop_button.setEnabled(False)

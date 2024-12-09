@@ -161,6 +161,8 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
         record_audio.pause_flag = False
     if not hasattr(record_audio, 'use_microphone'):
         record_audio.use_microphone = False
+    if not hasattr(record_audio, 'current_audio_data'):
+        record_audio.current_audio_data = None
    
     # 生成基础文件名（使用时间戳）
     base_filename = os.path.join(audio_dir, f"recording")
@@ -231,6 +233,9 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
                         except Exception as e:
                             print(f"麦克风录音错误: {str(e)}")
                             mic_recorder = None
+                    
+                    # 更新实时音频数据用于波形图显示
+                    record_audio.current_audio_data = np.mean(data, axis=1)
                     
                     recorded_frames.append(data)
                     frame_count += len(data)
@@ -318,6 +323,7 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
         record_audio.stop_flag = False
         record_audio.pause_flag = False
         record_audio.use_microphone = False
+        record_audio.current_audio_data = None
 
 def save_segment(frames, base_filename, segment_count, sample_rate):
     """保存单个录音片段"""
