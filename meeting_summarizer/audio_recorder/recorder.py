@@ -10,7 +10,12 @@ import time
 import psutil
 import humanize
 from pathlib import Path
+import warnings
+from soundcard.mediafoundation import SoundcardRuntimeWarning
 from utils.project_manager import project_manager
+
+# 过滤掉 data discontinuity 警告
+warnings.filterwarnings("ignore", category=SoundcardRuntimeWarning, message="data discontinuity in recording")
 
 def list_audio_devices():
     # 列出所有支持录音的设备（包含虚拟声卡）
@@ -204,17 +209,10 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
     status.start()
     
     try:
-        with mic.recorder(samplerate=sample_rate) as recorder:
+        with mic.recorder(samplerate=sample_rate, blocksize=4096) as recorder:  
             print("录音设备初始化成功")
             mic_recorder = None
-            if mic_device:
-                try:
-                    mic_recorder = mic_device.recorder(samplerate=sample_rate)
-                    mic_recorder.__enter__()
-                    print("麦克风设备初始化成功")
-                except Exception as e:
-                    print(f"麦克风初始化失败: {str(e)}")
-                    mic_recorder = None
+            last_mic_state = False  # 记录上一次麦克风状态
             
             while not record_audio.stop_flag:
                 try:
@@ -222,20 +220,66 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
                         time.sleep(0.1)
                         continue
                     
+                    time.sleep(0.01)
+                    
+                    # 检查麦克风状态是否改变
+                    current_mic_state = record_audio.use_microphone
+                    if current_mic_state != last_mic_state:
+                        if current_mic_state:
+                            # 麦克风被启用，初始化麦克风
+                            try:
+                                mic_devices = [m for m in sc.all_microphones() if not m.isloopback]
+                                if mic_devices:
+                                    mic_device = mic_devices[0]
+                                    mic_recorder = mic_device.recorder(samplerate=sample_rate, blocksize=4096)
+                                    mic_recorder.__enter__()
+                                    print("麦克风已启用并初始化成功")
+                                else:
+                                    print("警告：未找到可用的麦克风设备")
+                                    record_audio.use_microphone = False
+                            except Exception as e:
+                                print(f"麦克风初始化失败: {str(e)}")
+                                record_audio.use_microphone = False
+                        else:
+                            # 麦克风被禁用，关闭麦克风
+                            if mic_recorder:
+                                try:
+                                    mic_recorder.__exit__(None, None, None)
+                                    mic_recorder = None
+                                    print("麦克风已禁用")
+                                except Exception as e:
+                                    print(f"关闭麦克风时出错: {str(e)}")
+                        last_mic_state = current_mic_state
+                    
                     # 录制系统声音
                     data = recorder.record(numframes=int(sample_rate * 0.1))
                     
                     # 如果启用麦克风，混合麦克风输入
-                    if mic_recorder:
+                    if current_mic_state and mic_recorder:
                         try:
                             mic_data = mic_recorder.record(numframes=int(sample_rate * 0.1))
-                            data = np.mean([data, mic_data], axis=0)
+                            # 将单声道麦克风数据转换为立体声
+                            if mic_data.shape[1] == 1 and data.shape[1] == 2:
+                                mic_data = np.repeat(mic_data, 2, axis=1)
+                            
+                            # 确保两个数组形状相同
+                            if data.shape == mic_data.shape:
+                                # 混合音频，麦克风音量稍微降低以避免失真
+                                data = 0.7 * data + 0.3 * mic_data
+                            else:
+                                print(f"警告：麦克风数据形状 {mic_data.shape} 与系统音频形状 {data.shape} 不匹配")
                         except Exception as e:
                             print(f"麦克风录音错误: {str(e)}")
                             mic_recorder = None
                     
                     # 更新实时音频数据用于波形图显示
-                    record_audio.current_audio_data = np.mean(data, axis=1)
+                    # 将立体声数据转换为单声道用于显示
+                    current_data = np.mean(data, axis=1)
+                    # 标准化数据到 [-1, 1] 范围
+                    max_val = np.max(np.abs(current_data)) if len(current_data) > 0 else 1
+                    if max_val > 0:
+                        current_data = current_data / max_val
+                    record_audio.current_audio_data = current_data
                     
                     recorded_frames.append(data)
                     frame_count += len(data)
