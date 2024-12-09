@@ -240,6 +240,9 @@ class RecordingWidget(QWidget):
     def start_recording(self):
         """开始录音"""
         try:
+            # 确保项目根目录存在
+            project_manager.create_project()
+            
             if self.is_recording:
                 print("录音已在进行中")
                 return

@@ -4,13 +4,45 @@ import re
 from typing import List
 import tiktoken
 from nltk.tokenize import sent_tokenize
+import os
+from pathlib import Path
 
-# Download required NLTK data
-try:
-    nltk.download('punkt')
-    nltk.download('punkt_tab')
-except Exception as e:
-    logging.error(f"Failed to download NLTK data: {str(e)}")
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# 设置本地 NLTK 数据目录（相对于当前文件的位置）
+local_nltk_data = os.path.join(os.path.dirname(__file__), 'nltk_data')
+if os.path.exists(local_nltk_data):
+    nltk.data.path.insert(0, local_nltk_data)  # 优先使用本地数据
+    logger.info(f"Using local NLTK data from: {local_nltk_data}")
+
+# 如果本地数据不存在，使用用户目录
+user_nltk_data = os.path.join(os.path.expanduser("~"), "AppData", "Roaming", "nltk_data")
+os.makedirs(user_nltk_data, exist_ok=True)
+nltk.data.path.append(user_nltk_data)
+
+def ensure_nltk_data():
+    """确保 NLTK 数据可用"""
+    try:
+        # 检查数据是否已存在
+        try:
+            nltk.data.find('tokenizers/punkt')
+            logger.info("NLTK punkt tokenizer found")
+            return True
+        except LookupError:
+            # 数据不存在，尝试下载
+            logger.info("Downloading NLTK punkt tokenizer...")
+            nltk.download('punkt', quiet=True, raise_on_error=True)
+            logger.info("Successfully downloaded NLTK punkt tokenizer")
+            return True
+    except Exception as e:
+        logger.error(f"Failed to initialize NLTK data: {str(e)}")
+        logger.error("Will use basic sentence splitting as fallback")
+        return False
+
+# 初始化 NLTK 数据
+NLTK_AVAILABLE = ensure_nltk_data()
 
 class TranscriptChunker:
     def __init__(self, max_tokens: int = 4000):
@@ -84,7 +116,7 @@ class TranscriptChunker:
                     current_token_count = 0
                 
                 if segment_tokens > self.max_tokens:
-                    sentences = sent_tokenize(segment)
+                    sentences = self.split_into_sentences(segment)
                     temp_chunk = []
                     temp_tokens = 0
                     
@@ -151,4 +183,15 @@ class TranscriptChunker:
             return self.create_timestamped_chunks(text)
         else:
             self.logger.info("Detected plain text format - using content-based chunking")
-            return self.create_content_based_chunks(text) 
+            return self.create_content_based_chunks(text)
+
+    def split_into_sentences(self, text: str) -> List[str]:
+        """分割文本为句子"""
+        if NLTK_AVAILABLE:
+            try:
+                return sent_tokenize(text)
+            except Exception as e:
+                self.logger.warning(f"NLTK sentence tokenization failed: {str(e)}")
+                
+        # 如果 NLTK 不可用或失败，使用基本的分割方法
+        return [s.strip() for s in re.split(r'[.!?]+', text) if s.strip()]

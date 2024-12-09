@@ -24,16 +24,11 @@ class ProjectManager:
         self.config = self._load_config()
         print(f"加载配置: {self.config}")
         
+        # 确保根目录存在
+        os.makedirs(self.default_root, exist_ok=True)
+        
         # 当前项目目录
         self.current_project = None
-        
-        # 如果有上次的项目，尝试加载
-        if self.config.get("last_project"):
-            if os.path.exists(self.config["last_project"]):
-                self.current_project = self.config["last_project"]
-                print(f"加载上次项目: {self.current_project}")
-            else:
-                print(f"上次项目不存在: {self.config['last_project']}")
     
     def _load_config(self):
         """加载配置文件"""
@@ -50,9 +45,6 @@ class ProjectManager:
             "root_dir": self.default_root,
             "last_project": None
         }
-        
-        # 确保目录存在
-        os.makedirs(self.default_root, exist_ok=True)
         
         # 保存默认配置
         try:
@@ -178,6 +170,17 @@ class ProjectManager:
         self._save_config()
         
         return project_path
+    
+    def load_last_project(self):
+        """加载上次的项目，仅在打开历史记录窗口时调用"""
+        if self.config.get("last_project"):
+            if os.path.exists(self.config["last_project"]):
+                self.current_project = self.config["last_project"]
+                print(f"加载上次项目: {self.current_project}")
+                return True
+            else:
+                print(f"上次项目不存在: {self.config['last_project']}")
+        return False
     
     def get_latest_transcript(self):
         """获取最新的转写文件路径"""

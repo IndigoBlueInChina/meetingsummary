@@ -81,24 +81,22 @@ class UploadWidget(QWidget):
         layout.addStretch()
     
     def select_file(self):
-        """选择文件"""
-        try:
-            file_name, _ = QFileDialog.getOpenFileName(
-                self,
-                "选择文件",
-                os.path.expanduser("~/Documents"),
-                "音频文件 (*.wav *.mp3);;文本文件 (*.txt);;Word文档 (*.docx)"
-            )
-            
-            if file_name:
-                self.selected_file = file_name
-                self.file_label.setText(f"已选择: {os.path.basename(file_name)}")
-                self.process_button.setEnabled(True)
+        """选择要上传的文件"""
+        file_dialog = QFileDialog()
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
+        file_dialog.setNameFilter("音频文件 (*.wav *.mp3);;文字稿 (*.txt *.docx)")
+        
+        if file_dialog.exec():
+            selected_files = file_dialog.selectedFiles()
+            if selected_files:
+                self.selected_file = selected_files[0]
+                self.file_label.setText(f"已选择: {os.path.basename(self.selected_file)}")
                 
-        except Exception as e:
-            print(f"选择文件时发生错误: {str(e)}")
-            import traceback
-            traceback.print_exc()
+                # 创建新项目目录
+                project_manager.create_project()
+                print(f"项目目录已创建: {project_manager.get_current_project()}")
+                
+                self.process_button.setEnabled(True)
     
     def process_file(self):
         """处理上传的文件"""
@@ -106,9 +104,6 @@ class UploadWidget(QWidget):
             if not self.selected_file:
                 return
                 
-            # 创建新项目
-            project_manager.create_project()
-            
             # 根据文件类型处理
             file_ext = os.path.splitext(self.selected_file)[1].lower()
             
