@@ -1,3 +1,4 @@
+from meeting_summarizer.utils import project_manager
 import soundcard as sc
 import numpy as np
 import os
@@ -136,7 +137,9 @@ class RecordingStatus:
             'disk_space': self.disk_space
         }
 
-def record_audio(device_index=None, sample_rate=44100, segment_duration=300, callback=None, project_dir=None):
+
+def record_audio(device_index=None, sample_rate=44100, segment_duration=300, project_dir=None):
+
     """
     录制音频并自动分段保存
     """
@@ -160,6 +163,10 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, cal
     if not hasattr(record_audio, 'use_microphone'):
         record_audio.use_microphone = False
 
+    if project_dir is None:
+        project_dir = project_manager.get_audio_dir()
+    os.makedirs(project_dir, exist_ok=True)
+    
     # 生成基础文件名（使用时间戳）
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     base_filename = os.path.join(project_dir, f"recording_{timestamp}")
