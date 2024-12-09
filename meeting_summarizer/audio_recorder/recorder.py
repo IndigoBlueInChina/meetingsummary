@@ -139,14 +139,22 @@ class RecordingStatus:
 
 
 def record_audio(device_index=None, sample_rate=44100, segment_duration=300, project_dir=None):
+
     """
     录制音频并自动分段保存
-    :param device_index: 录音设备索引
-    :param sample_rate: 采样率
-    :param segment_duration: 每段录音的时长（秒）
-    :param project_dir: 项目目录（可选）
     """
     print("\n=== 开始录音 ===")
+    print(f"指定的项目目录: {project_dir}")
+    
+    # 确保使用正确的项目目录
+    if project_dir is None:
+        project_dir = project_manager.get_current_project()
+        print(f"使用项目管理器获取目录: {project_dir}")
+    
+    audio_dir = os.path.join(project_dir, "audio")
+    os.makedirs(audio_dir, exist_ok=True)
+    print(f"音频保存目录: {audio_dir}")
+    
     # 初始化函数属性
     if not hasattr(record_audio, 'stop_flag'):
         record_audio.stop_flag = False
@@ -155,7 +163,6 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
     if not hasattr(record_audio, 'use_microphone'):
         record_audio.use_microphone = False
 
-    # 确保输出目录存在
     if project_dir is None:
         project_dir = project_manager.get_audio_dir()
     os.makedirs(project_dir, exist_ok=True)

@@ -116,8 +116,25 @@ def transcribe_audio(audio_path):
     :param audio_path: 音频文件路径
     :return: 转录的文本
     """
-    transcriber = get_transcriber()
-    return transcriber.transcribe_audio(audio_path)
+    try:
+        if not os.path.exists(audio_path):
+            raise FileNotFoundError(f"音频文件不存在: {audio_path}")
+            
+        transcriber = get_transcriber()
+        if not transcriber:
+            raise RuntimeError("无法初始化转写器")
+            
+        text = transcriber.transcribe_audio(audio_path)
+        if not text or text.strip() == "":
+            raise ValueError("转写结果为空")
+            
+        return text
+        
+    except Exception as e:
+        logging.error(f"音频转写失败: {str(e)}")
+        logging.error(f"音频文件: {audio_path}")
+        traceback.print_exc()
+        raise
 
 def main():
     # 配置日志

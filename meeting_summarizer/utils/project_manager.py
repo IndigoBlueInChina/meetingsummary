@@ -13,15 +13,28 @@ class ProjectManager:
     CONFIG_FILE = "config.json"
     
     def __init__(self):
+        """初始化项目管理器"""
         # 获取用户主目录
         self.user_home = str(Path.home())
         # 默认项目根目录
         self.default_root = os.path.join(self.user_home, "meetingsummary")
+        print(f"默认项目根目录: {self.default_root}")
+        
         # 加载配置
         self.config = self._load_config()
+        print(f"加载配置: {self.config}")
+        
         # 当前项目目录
         self.current_project = None
         
+        # 如果有上次的项目，尝试加载
+        if self.config.get("last_project"):
+            if os.path.exists(self.config["last_project"]):
+                self.current_project = self.config["last_project"]
+                print(f"加载上次项目: {self.current_project}")
+            else:
+                print(f"上次项目不存在: {self.config['last_project']}")
+    
     def _load_config(self):
         """加载配置文件"""
         config_path = os.path.join(self.default_root, self.CONFIG_FILE)
@@ -75,24 +88,32 @@ class ProjectManager:
         # 生成项目目录名（年月日时分）
         project_name = datetime.now().strftime("%Y%m%d_%H%M")
         project_path = os.path.join(self.get_root_dir(), project_name)
+        print(f"创建新项目目录: {project_path}")
         
-        # 创建项目目录结构
-        os.makedirs(project_path, exist_ok=True)
-        os.makedirs(os.path.join(project_path, self.AUDIO_DIR), exist_ok=True)
-        os.makedirs(os.path.join(project_path, self.TRANSCRIPT_DIR), exist_ok=True)
-        os.makedirs(os.path.join(project_path, self.SUMMARY_DIR), exist_ok=True)
-        
-        # 更新当前项目
-        self.current_project = project_path
-        self.config["last_project"] = project_path
-        self._save_config()
-        
-        return project_path
+        try:
+            # 创建项目目录结构
+            os.makedirs(project_path, exist_ok=True)
+            os.makedirs(os.path.join(project_path, self.AUDIO_DIR), exist_ok=True)
+            os.makedirs(os.path.join(project_path, self.TRANSCRIPT_DIR), exist_ok=True)
+            os.makedirs(os.path.join(project_path, self.SUMMARY_DIR), exist_ok=True)
+            
+            # 更新当前项目
+            self.current_project = project_path
+            self.config["last_project"] = project_path
+            self._save_config()
+            
+            print(f"项目创建成功: {project_path}")
+            return project_path
+        except Exception as e:
+            print(f"创建项目目录失败: {str(e)}")
+            return None
     
     def get_current_project(self):
         """获取当前项目目录"""
         if not self.current_project:
+            print("没有当前项目，创建新项目")
             return self.create_project()
+        print(f"返回当前项目: {self.current_project}")
         return self.current_project
     
     def get_audio_dir(self):
