@@ -31,7 +31,8 @@ class RecordingWidget(QWidget):
         self.data_index = 0
         self.plot_timer = QTimer()
         self.plot_timer.timeout.connect(self.update_waveform)
-        self.plot_timer.start(50)  # 每50ms更新一次波形图
+        # 不要在初始化时就启动定时器
+        # self.plot_timer.start(50)  # 每50ms更新一次波形图
         
         # 创建新项目
         project_manager.create_project()
@@ -203,54 +204,58 @@ class RecordingWidget(QWidget):
 
     def load_audio_devices(self):
         """加载可用的录音设备"""
-        current_device = self.device_combo.currentText()
-        self.device_combo.clear()
-        
         try:
-            # 获取系统麦克风设备
+            # 获取所有设备
             devices = list_audio_devices()
-            print(f"获取到的设备列表: {devices}")  # 调试信息
+            print(f"[RecordingWidget] 获取到的设备列表: {devices}")
             
             # 根据设备名称前缀区分麦克风和其他录音设备
             mic_devices = [dev for dev in devices if str(dev).startswith('<Microphone')]
             other_devices = [dev for dev in devices if str(dev).startswith('<Loopback')]
             
-            print(f"麦克风设备: {mic_devices}")  # 调试信息
-            print(f"其他录音设备: {other_devices}")  # 调试信息
+            print(f"[RecordingWidget] 麦克风设备: {mic_devices}")
+            print(f"[RecordingWidget] 其他录音设备: {other_devices}")
             
+            # 更新可用设备列表
             self.available_devices = other_devices
+            self.device_combo.clear()
+            
+            # 添加录音设备到下拉框
+            for i, dev in enumerate(self.available_devices):
+                self.device_combo.addItem(f"{i}: {dev.name}")
             
             # 检查是否有麦克风设备
             if mic_devices:
                 self.mic_button.setEnabled(True)
+                print("[RecordingWidget] 检测到麦克风设备，启用麦克风按钮")
             else:
                 self.mic_button.setEnabled(False)
                 self.mic_button.setChecked(False)
+                print("[RecordingWidget] 未检测到麦克风设备，禁用麦克风按钮")
             
             self.update_mic_button_style()
             
-            # 添加录音设备到下拉框
-            if not self.available_devices:
-                self.device_combo.addItem("未找到录音设备")
-                self.record_button.setEnabled(False)
-                return
-                
-            for i, dev in enumerate(self.available_devices):
-                self.device_combo.addItem(str(dev).split(' ', 1)[1].rstrip('>'), i)
-                    
-            # 尝试恢复之前选中的设备
-            index = self.device_combo.findText(current_device)
-            if index >= 0:
-                self.device_combo.setCurrentIndex(index)
+            # 添加设备切换的信号处理
+            self.device_combo.currentIndexChanged.connect(self.on_device_changed)
+            print("[RecordingWidget] 已加载可用录音设备")
             
-            self.record_button.setEnabled(True)
-                
         except Exception as e:
+            print(f"[RecordingWidget] 加载录音设备时出错: {str(e)}")
             import traceback
-            print(f"加载录音设备失败: {str(e)}")
-            print(f"错误详情: {traceback.format_exc()}")  # 打印完整的错误堆栈
+            traceback.print_exc()
             self.device_combo.addItem("加载设备失败")
             self.record_button.setEnabled(False)
+            
+    def on_device_changed(self, index):
+        """处理设备切换事件"""
+        try:
+            print(f"[RecordingWidget] 设备切换: {index}")
+            if self.is_recording:
+                # 如果正在录音，更新录音设备索引
+                record_audio.device_index = index
+                print(f"[RecordingWidget] 已更新录音设备索引: {index}")
+        except Exception as e:
+            print(f"[RecordingWidget] 切换设备时出错: {str(e)}")
 
     def start_recording(self):
         """开始录音"""
@@ -263,6 +268,10 @@ class RecordingWidget(QWidget):
             self.waveform_data = []
             self.data_index = 0
             self.plot_curve.setData([])
+            
+            # 启动波形图更新定时器
+            self.plot_timer.start(50)
+            print("波形图更新定时器已启动")
             
             # 重置停止标志
             record_audio.stop_flag = False
@@ -332,72 +341,96 @@ class RecordingWidget(QWidget):
 
     def update_waveform(self):
         """更新波形图"""
-        if self.is_recording and not self.is_paused:
-            # 获取音频数据
-            if hasattr(record_audio, 'current_audio_data'):
-                data = record_audio.current_audio_data
-                if data is not None and len(data) > 0:
-                    # 将数据添加到波形图数据列表
-                    self.waveform_data.extend(data)
-                    # 保持最近的1000个数据点
-                    if len(self.waveform_data) > 1000:
-                        self.waveform_data = self.waveform_data[-1000:]
-                    # 更新波形图
-                    self.plot_curve.setData(self.waveform_data)
+        try:
+            if not hasattr(record_audio, 'current_audio_data'):
+                return
+                
+            if not self.is_recording or self.is_paused:
+                return
+                
+            data = record_audio.current_audio_data
+            if data is None or len(data) == 0:
+                return
+                
+            # 将数据添加到波形图数据列表
+            self.waveform_data.extend(data)
+            # 保持最近的1000个数据点
+            if len(self.waveform_data) > 1000:
+                self.waveform_data = self.waveform_data[-1000:]
+            # 更新波形图
+            self.plot_curve.setData(self.waveform_data)
+        except Exception as e:
+            print(f"[RecordingWidget] 更新波形图时发生错误: {str(e)}")
 
     def stop_recording(self):
         """停止录音"""
         try:
-            print("\n=== 停止录音 ===")
+            print("\n=== [RecordingWidget] 停止录音 ===")
             if not self.is_recording:
-                print("当前没有录音在进行")
+                print("[RecordingWidget] 当前没有录音在进行")
                 return
+
+            # 停止波形图更新定时器
+            self.plot_timer.stop()
+            print("[RecordingWidget] 波形图更新定时器已停止")
 
             # 清空波形图
             self.waveform_data = []
             self.plot_curve.setData([])
+            print("[RecordingWidget] 已清空波形图")
             
             # 禁用按钮，防止重复点击
             self.stop_button.setEnabled(False)
             self.record_button.setEnabled(False)
+            print("[RecordingWidget] 已禁用录音按钮")
             
             # 设置停止标志
+            print("[RecordingWidget] 正在设置停止标志...")
             record_audio.stop_flag = True
             self.is_recording = False
             self.is_paused = False
+            print(f"[RecordingWidget] 停止标志已设置 - stop_flag: {record_audio.stop_flag}, is_recording: {self.is_recording}, is_paused: {self.is_paused}")
             
             # 等待录音线程结束
             if self.recording_thread and self.recording_thread.is_alive():
-                print("等待录音线程结束...")
+                print("[RecordingWidget] 等待录音线程结束...")
+                print(f"[RecordingWidget] 线程状态 - 是否存活: {self.recording_thread.is_alive()}, 是否守护线程: {self.recording_thread.daemon}")
                 self.recording_thread.join(timeout=2.0)
                 
                 if self.recording_thread.is_alive():
-                    print("录音线程仍在运行，强制终止...")
+                    print("[RecordingWidget] 录音线程仍在运行，强制终止...")
+                    print(f"[RecordingWidget] 线程状态 - 是否存活: {self.recording_thread.is_alive()}, 是否守护线程: {self.recording_thread.daemon}")
                     # 再次等待一小段时间
                     self.recording_thread.join(timeout=1.0)
+                    print(f"[RecordingWidget] 第二次等待后线程状态 - 是否存活: {self.recording_thread.is_alive()}")
+            else:
+                print("[RecordingWidget] 没有活动的录音线程")
             
             # 停止计时器
             self.timer.stop()
+            print("[RecordingWidget] 计时器已停止")
             
             # 重置录音相关标志
             record_audio.stop_flag = False
             record_audio.pause_flag = False
             record_audio.use_microphone = False
+            print("[RecordingWidget] 已重置所有录音标志")
             
             # 检查是否有音频文件生成
             if hasattr(self, 'audio_files') and self.audio_files:
-                print(f"录音完成，生成的文件: {self.audio_files}")
+                print(f"[RecordingWidget] 录音完成，生成的文件: {self.audio_files}")
                 # 切换到音频转文字页面
                 QTimer.singleShot(500, self.switch_to_transcribe_page)
             else:
-                print("错误：未找到生成的音频文件")
+                print("[RecordingWidget] 错误：未找到生成的音频文件")
                 # 重置按钮状态
                 self.stop_button.setEnabled(True)
                 self.record_button.setEnabled(True)
                 self.record_button.setText("开始录音")
+                print("[RecordingWidget] 已重置按钮状态")
             
         except Exception as e:
-            print(f"停止录音时发生错误: {str(e)}")
+            print(f"[RecordingWidget] 停止录音时发生错误: {str(e)}")
             import traceback
             traceback.print_exc()
             # 重置按钮状态
