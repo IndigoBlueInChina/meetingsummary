@@ -9,6 +9,7 @@ from processing_window import ProcessingWidget
 from summary_view import SummaryViewWidget
 from utils.project_manager import project_manager
 import os
+from history_window import HistoryWindow
 
 class SlideStackedWidget(QStackedWidget):
     def __init__(self):
@@ -197,6 +198,15 @@ class MainWindow(QMainWindow):
         upload_audio_button.clicked.connect(self.show_upload_page)
         layout.addWidget(upload_audio_button)
 
+        # 查看会议记录按钮
+        history_button = self.create_feature_button(
+            "查看会议记录",
+            "浏览历史会议记录",
+            "assets/history_icon.png"
+        )
+        history_button.clicked.connect(self.show_history_page)
+        layout.addWidget(history_button)
+
         # 添加底部空间
         layout.addStretch()
 
@@ -222,6 +232,11 @@ class MainWindow(QMainWindow):
     def show_summary_page(self):
         """切换到会议纪要预览页面"""
         self.stacked_widget.slide_to_index(4)  # 切换到总结页面
+
+    def show_history_page(self):
+        """显示历史记录页面"""
+        self.history_window = HistoryWindow()
+        self.history_window.show()
 
     def create_feature_button(self, title, subtitle, icon_path):
         """创建功能按钮"""

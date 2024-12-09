@@ -179,6 +179,17 @@ class ProjectManager:
         
         return project_path
     
+    def load_last_project(self):
+        """加载上次的项目，仅在打开历史记录窗口时调用"""
+        if self.config.get("last_project"):
+            if os.path.exists(self.config["last_project"]):
+                self.current_project = self.config["last_project"]
+                print(f"加载上次项目: {self.current_project}")
+                return True
+            else:
+                print(f"上次项目不存在: {self.config['last_project']}")
+        return False
+    
     def get_latest_transcript(self):
         """获取最新的转写文件路径"""
         try:
