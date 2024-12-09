@@ -1,4 +1,3 @@
-from meeting_summarizer.utils import project_manager
 import soundcard as sc
 import numpy as np
 import os
@@ -162,14 +161,9 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
         record_audio.pause_flag = False
     if not hasattr(record_audio, 'use_microphone'):
         record_audio.use_microphone = False
-
-    if project_dir is None:
-        project_dir = project_manager.get_audio_dir()
-    os.makedirs(project_dir, exist_ok=True)
-    
+   
     # 生成基础文件名（使用时间戳）
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base_filename = os.path.join(project_dir, f"recording_{timestamp}")
+    base_filename = os.path.join(audio_dir, f"recording")
     print(f"录音文件基础名: {os.path.basename(base_filename)}")
     
     # 获取录音设备
