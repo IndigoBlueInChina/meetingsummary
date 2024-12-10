@@ -34,10 +34,6 @@ class RecordingWidget(QWidget):
         # 不要在初始化时就启动定时器
         # self.plot_timer.start(50)  # 每50ms更新一次波形图
         
-        # 创建新项目
-        project_manager.create_project()
-        print(f"项目目录已创建: {project_manager.get_current_project()}")
-        
         self.init_ui()
         self.load_audio_devices()
         
@@ -263,6 +259,10 @@ class RecordingWidget(QWidget):
             if self.is_recording:
                 print("录音已在进行中")
                 return
+            
+            # 创建新项目
+            project_manager.create_project()
+            print(f"项目目录已创建: {project_manager.get_current_project()}")
             
             # 重置波形图数据
             self.waveform_data = []

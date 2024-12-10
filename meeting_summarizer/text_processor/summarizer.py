@@ -6,16 +6,15 @@ import re
 from pathlib import Path
 from .chunker import TranscriptChunker
 from meeting_summarizer.utils.llm_factory import LLMFactory
+from meeting_summarizer.config.settings import Settings
 
 class MeetingSummarizer:
     def __init__(self, 
                  provider_type: str = "ollama",
                  provider_config: Dict[str, Any] = None):
+        settings = Settings()  # 获取设置实例
         if provider_config is None:
-            provider_config = {
-                "model_name": "qwen2.5",
-                "api_url": "http://localhost:11434"
-            }
+            provider_config = settings._settings["llm"]  # 使用 LLM 配置
         
         self.llm = LLMFactory.create_provider(provider_type, **provider_config)
         self.chunker = TranscriptChunker(max_tokens=4000)
