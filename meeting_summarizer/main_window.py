@@ -4,12 +4,16 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtCore import Qt, QPoint, QEasingCurve, QPropertyAnimation, QParallelAnimationGroup, QTimer
 from PyQt6.QtGui import QIcon, QFont
 from recording_window import RecordingWidget
-from upload_window import UploadWidget
 from processing_window import ProcessingWidget
 from summary_view import SummaryViewWidget
-from utils.project_manager import project_manager
 import os
 from history_window import HistoryWindow
+from pathlib import Path
+import tkinter as tk
+from tkinter import filedialog
+import shutil
+from utils.llm_statuscheck import LLMStatusChecker
+from config.settings import Settings  # Import Settings class
 
 class SlideStackedWidget(QStackedWidget):
     def __init__(self):
@@ -81,9 +85,6 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("会议总结助手")
         self.resize(800, 600)
         
-        # 确保项目根目录存在
-        project_manager.create_project()
-        
         # 创建中央部件
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -99,19 +100,20 @@ class MainWindow(QMainWindow):
         
         # 创建各个功能页面
         self.recording_widget = RecordingWidget()
-        self.upload_widget = UploadWidget()
         self.processing_widget = ProcessingWidget()
         self.summary_widget = SummaryViewWidget()
         
         # 添加页面到堆叠窗口
         self.stacked_widget.addWidget(self.main_page)        # 主页面
         self.stacked_widget.addWidget(self.recording_widget) # 录音页面
-        self.stacked_widget.addWidget(self.upload_widget)    # 上传页面
         self.stacked_widget.addWidget(self.processing_widget) # 处理页面
         self.stacked_widget.addWidget(self.summary_widget)   # 总结页面
 
         # 确保显示主页面
         self.stacked_widget.setCurrentWidget(self.main_page)
+
+        # 检查 LLM 状态并显示
+        self.check_llm_status()
 
     def closeEvent(self, event):
         """处理窗口关闭事件"""
@@ -189,13 +191,13 @@ class MainWindow(QMainWindow):
         record_button.clicked.connect(self.show_recording_page)
         layout.addWidget(record_button)
 
-        # 上传录音或文字稿按钮
+        # 导入录音或文字稿按钮
         upload_audio_button = self.create_feature_button(
-            "上传录音或文字稿",
+            "导入录音或文字稿",
             "选择录音文件或文字稿文件",
             "assets/upload_audio_icon.png"
         )
-        upload_audio_button.clicked.connect(self.show_upload_page)
+        upload_audio_button.clicked.connect(self.import_audio_or_text)  # 直接打开文件选择窗口
         layout.addWidget(upload_audio_button)
 
         # 查看会议记录按钮
@@ -210,7 +212,68 @@ class MainWindow(QMainWindow):
         # 添加底部空间
         layout.addStretch()
 
+        # LLM 状态标签
+        self.llm_status_label = QLabel("LLM 服务状态: ")
+        self.llm_status_label.setStyleSheet("color: black; font-size: 14px;")
+        layout.addWidget(self.llm_status_label)
+
         return main_page
+
+    def import_audio_or_text(self):
+        """打开文件选择对话框"""
+        print("打开文件选择对话框-导入录音或文字稿")
+        
+        # 创建一个 Tkinter 根窗口并隐藏
+        root = tk.Tk()
+        root.withdraw()  # 隐藏主窗口
+
+        # 获取主窗口的位置
+        geometry = self.geometry().split('+')
+        x = int(geometry[1])
+        y = int(geometry[2])
+
+        # 设置 Tkinter 根窗口位置
+        root.geometry(f'400x200+{x+50}+{y+50}')  # 设置对话框位置
+
+        # 打开文件选择对话框
+        file_name = filedialog.askopenfilename(
+            title="导入录音或文字稿",
+            filetypes=[
+                ("音频文件", "*.wav;*.mp3"),
+                ("文本文件", "*.txt;*.docx;*.pdf")
+            ]
+        )
+        
+        if file_name:
+            print(f"选择的文件: {file_name}")  # 这里可以根据需要处理文件路径
+            
+            # 创建新项目
+            project_manager.create_project()  # 创建项目
+            file_ext = os.path.splitext(file_name)[1].lower()  # 获取文件扩展名
+            
+            if file_ext in ['.wav', '.mp3']:
+                # 复制音频文件到项目的 audio 目录
+                audio_dir = project_manager.get_audio_dir()
+                target_file = os.path.join(audio_dir, os.path.basename(file_name))
+                shutil.copy2(file_name, target_file)  # 复制文件
+                print(f"音频文件已复制到: {target_file}")
+                
+                # 启动处理窗口
+                self.show_processing_page()  # 启动处理窗口
+            
+            elif file_ext in ['.txt', '.docx']:
+                # 复制文本文件到项目的 transcript 目录
+                transcript_dir = project_manager.get_transcript_dir()
+                target_file = os.path.join(transcript_dir, os.path.basename(file_name))
+                shutil.copy2(file_name, target_file)  # 复制文件
+                print(f"文本文件已复制到: {target_file}")
+                
+                # 启动处理窗口
+                self.show_processing_page()  # 启动处理窗口
+            
+            return file_name
+        else:
+            print("未选择文件")  # Debug statement
 
     def show_recording_page(self):
         """显示录音页面"""
@@ -220,18 +283,14 @@ class MainWindow(QMainWindow):
         """返回主页面"""
         self.stacked_widget.slide_to_index(0)  # 切换到主页面
 
-    def show_upload_page(self):
-        """显示上传页面"""
-        self.stacked_widget.slide_to_index(2)  # 切换到上传页面
-
     def show_processing_page(self):
         """显示处理页面"""
-        self.stacked_widget.slide_to_index(3)  # 切换到处理页面
+        self.stacked_widget.slide_to_index(2)  # 切换到处理页面
         self.processing_widget.start_processing()
 
     def show_summary_page(self):
         """切换到会议纪要预览页面"""
-        self.stacked_widget.slide_to_index(4)  # 切换到总结页面
+        self.stacked_widget.slide_to_index(3)  # 切换到总结页面
 
     def show_history_page(self):
         """显示历史记录页面"""
@@ -263,16 +322,6 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(title_label)
         header_layout.addStretch()
 
-        # 添加下载图标（如果需要）
-        download_icon = QLabel()
-        download_icon.setFixedSize(20, 20)
-        download_icon.setStyleSheet("""
-            background-image: url(path/to/download_icon.png);
-            background-position: center;
-            background-repeat: no-repeat;
-        """)
-        header_layout.addWidget(download_icon)
-
         button_layout.addLayout(header_layout)
 
         # 添加副标题
@@ -296,11 +345,36 @@ class MainWindow(QMainWindow):
 
         return button
 
+    def check_llm_status(self):
+        """检查 LLM 服务状态并显示"""
+        settings = Settings()  # 获取设置实例
+        llm_config = settings._settings["llm"]  # 获取 LLM 配置
+        checker = LLMStatusChecker(llm_config["api_url"])  # 使用配置中的 URL
+        status = checker.check_status()
+        self.display_llm_status(status)
+
+    def display_llm_status(self, status):
+        """在主页面底部显示 LLM 状态"""
+        if status == "ready":
+            color = "green"
+        elif status == "offline":
+            color = "darkred"
+        else:
+            color = "black"  # 默认颜色
+        
+        self.llm_status_label.setText(f"LLM 服务状态: {status}")
+        self.llm_status_label.setStyleSheet(f"color: {color}; font-size: 14px;")
+
 def main():
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec())
+    try:
+        app = QApplication(sys.argv)
+        window = MainWindow()
+        window.show()  # 确保主窗口显示
+        sys.exit(app.exec())  # 启动事件循环
+    except Exception as e:
+        print(f"程序启动时发生错误: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == '__main__':
     main()

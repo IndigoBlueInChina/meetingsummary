@@ -20,6 +20,7 @@ class SenseVoiceTranscriber:
                 vad_model="fsmn-vad",  # 添加 VAD 模型
                 vad_kwargs={"max_single_segment_time": 30000},  # VAD 配置
                 device='cuda' if torch.cuda.is_available() else 'cpu',
+                disable_update=True  # 禁用模型更新检查
             )
             self.logger.info("Model loaded successfully")
         except Exception as e:
