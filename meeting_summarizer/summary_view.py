@@ -147,6 +147,8 @@ class SummaryViewWidget(QWidget):
         
         # 加载最新的总结
         self.load_latest_summary()
+        self.load_transcriptfile()
+        self.load_summaryfile()
         
     def load_latest_summary(self):
         """加载最新的会议总结"""
@@ -181,6 +183,47 @@ class SummaryViewWidget(QWidget):
             import traceback
             traceback.print_exc()
             self.summary_text.setText(f"加载总结文件失败: {str(e)}")
+    
+    def load_transcriptfile(self):
+        """加载转录文件"""
+        transcript_file = project_manager.transcript_file
+        if not os.path.exists(transcript_file):
+            self.transcript_text.setText("未找到转录文件")
+            return
+        
+        file_extension = os.path.splitext(transcript_file)[1].lower()
+        if file_extension == ".txt":
+            with open(transcript_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+                self.transcript_text.setPlainText(content)
+        elif file_extension == ".pdf":
+            from PyPDF2 import PdfReader
+            with open(transcript_file, 'rb') as f:
+                reader = PdfReader(f)
+                content = ""
+                for page in reader.pages:
+                    content += page.extract_text() + '\n'
+                self.transcript_text.setPlainText(content)
+        elif file_extension == ".docx":
+            from docx import Document
+            doc = Document(transcript_file)
+            content = ""
+            for para in doc.paragraphs:
+                content += para.text + '\n'
+            self.transcript_text.setPlainText(content)
+        else:
+            self.transcript_text.setText("不支持的文件格式")
+
+    def load_summaryfile(self):
+        """加载总结文件"""
+        summary_file = project_manager.summary_file
+        if not os.path.exists(summary_file):
+            self.summary_text.setText("未找到总结文件")
+            return
+        
+        with open(summary_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+            self.summary_text.setPlainText(content)
     
     def toggle_edit(self):
         """切换编辑模式"""

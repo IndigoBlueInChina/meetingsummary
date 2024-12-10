@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                             QPushButton, QLabel, QFrame, QHBoxLayout, QStackedWidget, QMessageBox)
 from PyQt6.QtCore import Qt, QPoint, QEasingCurve, QPropertyAnimation, QParallelAnimationGroup, QTimer
 from PyQt6.QtGui import QIcon, QFont
+from meeting_summarizer.utils import ProjectManager
 from recording_window import RecordingWidget
 from processing_window import ProcessingWidget
 from summary_view import SummaryViewWidget
@@ -84,6 +85,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("会议总结助手")
         self.resize(800, 600)
+        
+        # 初始化项目管理器
+        self.project_manager = ProjectManager()
         
         # 创建中央部件
         central_widget = QWidget()
@@ -228,9 +232,9 @@ class MainWindow(QMainWindow):
         root.withdraw()  # 隐藏主窗口
 
         # 获取主窗口的位置
-        geometry = self.geometry().split('+')
-        x = int(geometry[1])
-        y = int(geometry[2])
+        geometry = self.geometry()
+        x = geometry.x()
+        y = geometry.y()
 
         # 设置 Tkinter 根窗口位置
         root.geometry(f'400x200+{x+50}+{y+50}')  # 设置对话框位置
@@ -248,28 +252,30 @@ class MainWindow(QMainWindow):
             print(f"选择的文件: {file_name}")  # 这里可以根据需要处理文件路径
             
             # 创建新项目
-            project_manager.create_project()  # 创建项目
+            self.project_manager.create_project()  # 创建项目
             file_ext = os.path.splitext(file_name)[1].lower()  # 获取文件扩展名
             
             if file_ext in ['.wav', '.mp3']:
                 # 复制音频文件到项目的 audio 目录
-                audio_dir = project_manager.get_audio_dir()
-                target_file = os.path.join(audio_dir, os.path.basename(file_name))
+                target_file = os.path.join(self.project_manager.get_audio_dir(), os.path.basename(file_name) )
                 shutil.copy2(file_name, target_file)  # 复制文件
+                self.project_manager.record_file = target_file  
+                self.processing_widget.project_manager = self.project_manager
                 print(f"音频文件已复制到: {target_file}")
                 
                 # 启动处理窗口
                 self.show_processing_page()  # 启动处理窗口
             
-            elif file_ext in ['.txt', '.docx']:
+            elif file_ext in ['.txt', '.docx', '.pdf']:
                 # 复制文本文件到项目的 transcript 目录
-                transcript_dir = project_manager.get_transcript_dir()
-                target_file = os.path.join(transcript_dir, os.path.basename(file_name))
+                target_file = os.path.join(self.project_manager.get_root_dir(), os.path.basename(file_name))
                 shutil.copy2(file_name, target_file)  # 复制文件
+                self.project_manager.transcript_file = target_file
+                self.summary_widget.project_manager = self.project_manager
                 print(f"文本文件已复制到: {target_file}")
                 
                 # 启动处理窗口
-                self.show_processing_page()  # 启动处理窗口
+                self.show_summary_page()  # 启动处理窗口
             
             return file_name
         else:

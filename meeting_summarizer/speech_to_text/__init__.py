@@ -1,3 +1,3 @@
-from .transcriber import transcribe_audio
+from .transcriber import SenseVoiceTranscriber
 
-__all__ = ['transcribe_audio']
+__all__ = ['SenseVoiceTranscriber']

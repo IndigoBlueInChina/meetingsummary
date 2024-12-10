@@ -4,70 +4,50 @@ from speech_to_text.transcriber import transcribe_audio
 from text_processor.summarizer import generate_summary
 from utils.project_manager import project_manager
 import os
+from pydub import AudioSegment
 
 class ProcessingThread(QThread):
     progress_updated = pyqtSignal(str, int)  # 状态信息和进度值
     finished = pyqtSignal(bool, str)  # 成功/失败标志和结果信息
     
-    def __init__(self, audio_file):
+    def __init__(self, project_manager):
         super().__init__()
-        self.audio_file = audio_file
+        self.project_manager = project_manager
         
     def run(self):
         try:
-            # 第一阶段：音频转写
-            self.progress_updated.emit("正在转写音频...", 0)
+            # 使用 project_manager 中的实际录音文件路径
+            audio_file_path = self.project_manager.record_file
+            print(f"正在处理音频文件: {audio_file_path}")
             
-            # 获取文件路径
-            transcript_dir = project_manager.get_transcript_dir()
-            summary_dir = project_manager.get_summary_dir()
-            
-            # 生成转写文件名
-            transcript_file = os.path.join(
-                transcript_dir,
-                project_manager.get_transcript_filename(os.path.basename(self.audio_file))
-            )
-            
-            # 确保目录存在
-            os.makedirs(os.path.dirname(transcript_file), exist_ok=True)
-            
-            # 开始音频转写
-            try:
-                transcript_text = transcribe_audio(self.audio_file)
-                if not transcript_text or transcript_text.strip() == "":
-                    raise Exception("转写结果为空")
-            except Exception as e:
-                raise Exception(f"音频转写失败：{str(e)}")
+            if not os.path.exists(audio_file_path):
+                raise FileNotFoundError(f"找不到音频文件: {audio_file_path}")
                 
+            audio = AudioSegment.from_file(audio_file_path)
+            total_length = len(audio)  # 总时长（毫秒）
+
+            # 开始音频转写
+            transcript_text = ""
+            segment_length = 1000  # 每段音频的长度（毫秒）
+
+            for i in range(0, total_length, segment_length):
+                segment = audio[i:i + segment_length]  # 获取音频段
+                # 调用转录方法，传递 AudioSegment 对象
+                transcript_text += transcribe_audio(segment)  # 使用音频段
+
+                # 更新进度
+                progress = min(int((i + segment_length) / total_length * 100), 100)
+                self.progress_updated.emit("音频转写中...", progress)  # 发出进度更新信号
+
+            # 确保转写文本目录存在
+            os.makedirs(os.path.dirname(self.project_manager.transcript_file), exist_ok=True)
+            
             # 保存转写文本
-            with open(transcript_file, "w", encoding="utf-8") as f:
+            with open(self.project_manager.transcript_file, "w", encoding="utf-8") as f:
                 f.write(transcript_text)
                 
-            self.progress_updated.emit("音频转写完成", 50)
-            
-            # 第二阶段：生成总结
-            self.progress_updated.emit("正在生成会议总结...", 50)
-            
-            # 生成总结文件名
-            summary_file = os.path.join(
-                summary_dir,
-                project_manager.get_summary_filename(os.path.basename(transcript_file))
-            )
-            
-            # 确保目录存在
-            os.makedirs(os.path.dirname(summary_file), exist_ok=True)
-            
-            # 生成会议总结
-            try:
-                summary_text = generate_summary(transcript_text, summary_file)
-                if not summary_text or summary_text.strip() == "":
-                    raise Exception("生成的总结内容为空")
-            except Exception as e:
-                raise Exception(f"会议总结生成失败：{str(e)}")
-            
-            self.progress_updated.emit("会议总结生成完成", 100)
-            self.finished.emit(True, summary_file)
-            
+            self.finished.emit(True, "处理完成")
+
         except Exception as e:
             print(f"处理过程中发生错误: {str(e)}")
             import traceback
@@ -78,6 +58,7 @@ class ProcessingWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.audio_file = None
+        self.project_manager = project_manager
         self.init_ui()
         self.processing_thread = None
         self.stop_processing = False
@@ -127,25 +108,9 @@ class ProcessingWidget(QWidget):
     def start_processing(self, audio_file=None):
         """开始处理音频文件"""
         try:
-            if not audio_file:
-                if not self.audio_file:
-                    # 获取最新的音频文件
-                    audio_dir = project_manager.get_audio_dir()
-                    audio_files = [f for f in os.listdir(audio_dir) 
-                                 if f.endswith('.wav') and 'final' in f]
-                    if not audio_files:
-                        self.status_label.setText("错误：未找到音频文件")
-                        return
-                        
-                    # 选择最新的文件
-                    latest_file = max(audio_files, key=lambda x: os.path.getctime(
-                        os.path.join(audio_dir, x)))
-                    audio_file = os.path.join(audio_dir, latest_file)
-                else:
-                    audio_file = self.audio_file
             
             # 开始处理线程
-            self.processing_thread = ProcessingThread(audio_file)
+            self.processing_thread = ProcessingThread(self.project_manager)
             self.processing_thread.progress_updated.connect(self.update_progress)
             self.processing_thread.finished.connect(self.processing_finished)
             self.processing_thread.start()
@@ -175,23 +140,8 @@ class ProcessingWidget(QWidget):
                 # 获取总结页面并加载内容
                 summary_widget = stacked_widget.widget(4)  # 索引4是总结页面
                 if summary_widget:
-                    # 加载转写文本
-                    transcript_file = os.path.join(project_manager.get_transcript_dir(), 
-                                                 os.path.basename(self.audio_file).replace('.wav', '_transcript.txt'))
-                    if os.path.exists(transcript_file):
-                        with open(transcript_file, 'r', encoding='utf-8') as f:
-                            summary_widget.set_transcript(f.read())
-                    else:
-                        print(f"找不到转写文件: {transcript_file}")
-                    
-                    # 加载会议总结（注意：总结文件是基于转写文件名生成的）
-                    summary_file = os.path.join(project_manager.get_summary_dir(),
-                                              os.path.basename(transcript_file).replace('_transcript.txt', '_transcript_summary.txt'))
-                    if os.path.exists(summary_file):
-                        with open(summary_file, 'r', encoding='utf-8') as f:
-                            summary_widget.set_summary(f.read())
-                    else:
-                        print(f"找不到总结文件: {summary_file}")
+                    # 加载转写文本和会议总结
+                    summary_widget.load_transcriptfile()
                     
                     # 切换到总结页面
                     stacked_widget.slide_to_index(4)
