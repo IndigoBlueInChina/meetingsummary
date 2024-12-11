@@ -36,41 +36,51 @@ class ProjectManager:
         return self.default_root
     
     def create_project(self):
-
-        # 获取配置
-        self.settings = Settings()
-        # 默认项目根目录从settings获取
-        self.default_root = self.settings.get("project", "project_root")
-        print(f"默认项目根目录: {self.default_root}")
-        
-        # 确保根目录存在
-        os.makedirs(self.default_root, exist_ok=True)
-        
         """创建新项目目录"""
-        # 生成项目目录名（年月日时分）
-        project_name = datetime.now().strftime("%Y%m%d_%H%M")
-        project_path = os.path.join(self.get_root_dir(), project_name)
-        print(f"创建新项目目录: {project_path}")
-        
         try:
-            # 创建项目目录结构
-            os.makedirs(project_path, exist_ok=True)
-            os.makedirs(os.path.join(project_path, self.AUDIO_DIR), exist_ok=True)
-            os.makedirs(os.path.join(project_path, self.TRANSCRIPT_DIR), exist_ok=True)
-            os.makedirs(os.path.join(project_path, self.SUMMARY_DIR), exist_ok=True)
+            # 获取配置
+            self.settings = Settings()
+            # 默认项目根目录从settings获取
+            self.default_root = self.settings.get("project", "project_root")
+            print(f"默认项目根目录: {self.default_root}")
             
-            self.record_file = os.path.join(self.AUDIO_DIR, "default_record.wav")
-            self.transcript_file = os.path.join(self.TRANSCRIPT_DIR, "default_transcript.txt")
-            self.summary_file = os.path.join(self.SUMMARY_DIR, "default_summary.txt")
+            # 确保根目录存在
+            os.makedirs(self.default_root, exist_ok=True)
+            
+            # 生成项目目录名（年月日时分）
+            project_name = datetime.now().strftime("%Y%m%d_%H%M")
+            project_path = os.path.join(self.get_root_dir(), project_name)
+            print(f"创建新项目目录: {project_path}")
+            
+            try:
+                # 创建项目目录结构
+                os.makedirs(project_path, exist_ok=True)
+                os.makedirs(os.path.join(project_path, self.AUDIO_DIR), exist_ok=True)
+                os.makedirs(os.path.join(project_path, self.TRANSCRIPT_DIR), exist_ok=True)
+                os.makedirs(os.path.join(project_path, self.SUMMARY_DIR), exist_ok=True)
+                
+                # 修正：使用完整路径
+                self.record_file = os.path.join(project_path, self.AUDIO_DIR, "default_record.wav")
+                self.transcript_file = os.path.join(project_path, self.TRANSCRIPT_DIR, "default_transcript.txt")
+                self.summary_file = os.path.join(project_path, self.SUMMARY_DIR, "default_summary.txt")
 
-            # 更新当前项目
-            self.current_project = project_path
-            self.settings.set("project", "last_project", project_path)
+                # 更新当前项目
+                self.current_project = project_path
+                self.settings.set("project", "last_project", project_path)
+                
+                print(f"项目创建成功: {project_path}")
+                print(f"录音文件路径: {self.record_file}")
+                print(f"转写文件路径: {self.transcript_file}")
+                print(f"总结文件路径: {self.summary_file}")
+                
+                return project_path
+                
+            except Exception as e:
+                print(f"创建项目目录失败: {str(e)}")
+                return None
             
-            print(f"项目创建成功: {project_path}")
-            return project_path
         except Exception as e:
-            print(f"创建项目目录失败: {str(e)}")
+            print(f"创建项目失败: {str(e)}")
             return None
     
     def get_current_project(self):

@@ -371,6 +371,25 @@ class MainWindow(QMainWindow):
         self.llm_status_label.setText(f"LLM 服务状态: {status}")
         self.llm_status_label.setStyleSheet(f"color: {color}; font-size: 14px;")
 
+    def switch_to_summary_view(self):
+        """切换到总结视图"""
+        try:
+            # 找到 SummaryViewWidget
+            for i in range(self.stacked_widget.count()):
+                widget = self.stacked_widget.widget(i)
+                if isinstance(widget, SummaryViewWidget):
+                    # 加载转写文件
+                    widget.load_transcriptfile()
+                    # 切换到总结页面
+                    self.stacked_widget.setCurrentWidget(widget)
+                    print("成功切换到总结页面")
+                    return
+            
+            print("未找到总结页面组件")
+        except Exception as e:
+            print(f"切换到总结页面时出错: {str(e)}")
+            traceback.print_exc()
+
 def main():
     try:
         app = QApplication(sys.argv)

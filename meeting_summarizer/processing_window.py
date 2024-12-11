@@ -64,49 +64,84 @@ class ProcessingThread(QThread):
             traceback.print_exc()
             self.finished.emit(False, str(e))
 
+class StyledProgressBar(QProgressBar):
+    def __init__(self):
+        super().__init__()
+        self.setStyleSheet("""
+            QProgressBar {
+                border: 2px solid #E0E0E0;
+                border-radius: 8px;
+                text-align: center;
+                height: 25px;
+                background-color: #F5F5F5;
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+                                          stop:0 #33CCFF, stop:1 #3399FF);
+                border-radius: 6px;
+            }
+        """)
+
 class ProcessingWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.audio_file = None
         self.project_manager = project_manager
-        self.init_ui()
         self.processing_thread = None
         self.stop_processing = False
         self.is_processing = False
+        self.init_ui()
         
     def init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setContentsMargins(30, 30, 30, 30)
         layout.setSpacing(20)
+        
+        # 标题
+        title_label = QLabel("音频处理")
+        title_label.setStyleSheet("""
+            font-size: 24px;
+            font-weight: bold;
+            color: #2C3E50;
+            margin-bottom: 10px;
+        """)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title_label)
         
         # 状态标签
         self.status_label = QLabel("准备开始处理...")
+        self.status_label.setStyleSheet("""
+            font-size: 16px;
+            color: #34495E;
+            padding: 10px;
+        """)
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.status_label)
         
         # 进度条
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 100)
+        self.progress_bar = StyledProgressBar()
         self.progress_bar.setValue(0)
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 2px solid #E0E0E0;
-                border-radius: 5px;
-                text-align: center;
-                height: 25px;
-            }
-            QProgressBar::chunk {
-                background-color: #33CCFF;
-                border-radius: 3px;
-            }
-        """)
         layout.addWidget(self.progress_bar)
         
-        # 添加进度描述标签
-        self.progress_desc_label = QLabel("")
-        self.progress_desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.progress_desc_label.setStyleSheet("color: #666666;")
-        layout.addWidget(self.progress_desc_label)
+        # 预计剩余时间标签
+        self.time_label = QLabel("等待处理开始...")
+        self.time_label.setStyleSheet("""
+            color: #7F8C8D;
+            font-size: 14px;
+            padding: 5px;
+        """)
+        self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.time_label)
+        
+        # 添加提示信息
+        tip_label = QLabel("处理过程中请勿关闭窗口")
+        tip_label.setStyleSheet("""
+            color: #95A5A6;
+            font-style: italic;
+            padding: 10px;
+        """)
+        tip_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(tip_label)
         
         layout.addStretch()
         
@@ -142,33 +177,43 @@ class ProcessingWidget(QWidget):
         """更新进度信息"""
         self.status_label.setText(status)
         self.progress_bar.setValue(progress)
-        if progress < 50:
-            self.progress_desc_label.setText("转写进度：{}%".format(progress))
+        
+        # 计算预计剩余时间
+        remaining_minutes = (100 - progress) // 10
+        if remaining_minutes > 0:
+            self.time_label.setText(f"预计剩余时间：{remaining_minutes} 分钟")
         else:
-            self.progress_desc_label.setText("总结进度：{}%".format(progress - 50))
+            self.time_label.setText("即将完成...")
     
     def processing_finished(self, success, result):
-        """处理完成的回调函数"""
+        """处理完成后的回调"""
         if success:
             self.status_label.setText("处理完成")
-            # 获取堆叠窗口部件
-            stacked_widget = self.parent()
-            if isinstance(stacked_widget, QStackedWidget):
-                # 获取总结页面并加载内容
-                summary_widget = stacked_widget.widget(4)  # 索引4是总结页面
-                if summary_widget:
-                    # 加载转写文本和会议总结
-                    summary_widget.load_transcriptfile()
-                    
-                    # 切换到总结页面
-                    stacked_widget.slide_to_index(4)
-                else:
-                    self.status_label.setText("无法找到总结页面")
-            else:
-                self.status_label.setText("无法切换到总结页面")
-        else:
-            self.status_label.setText(f"处理失败：{result}")
+            self.time_label.setText("正在跳转到总结页面...")
             
+            try:
+                # 获取主窗口
+                main_window = self.window()
+                if hasattr(main_window, 'switch_to_summary_view'):
+                    # 调用主窗口的切换方法
+                    main_window.switch_to_summary_view()
+                    print("已请求切换到总结页面")
+                else:
+                    error_msg = "主窗口缺少切换页面的方法"
+                    print(error_msg)
+                    self.status_label.setText(error_msg)
+                    
+            except Exception as e:
+                error_msg = f"切换页面时发生错误: {str(e)}"
+                print(error_msg)
+                self.status_label.setText(error_msg)
+                traceback.print_exc()
+        else:
+            error_msg = f"处理失败: {result}"
+            print(error_msg)
+            self.status_label.setText(error_msg)
+            self.time_label.setText("请检查错误后重试")
+    
     def cleanup(self):
         """清理资源"""
         try:
@@ -185,7 +230,7 @@ class ProcessingWidget(QWidget):
             self.is_processing = False
             self.progress_bar.setValue(0)
             self.status_label.setText("准备开始处理...")
-            self.progress_desc_label.setText("")
+            self.time_label.setText("等待处理开始...")
             
         except Exception as e:
             print(f"清理处理窗口资源时发生错误: {str(e)}")
