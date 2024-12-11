@@ -88,6 +88,16 @@ class SenseVoiceTranscriber:
             traceback.print_exc()
             raise
 
+    def clean_transcript(self, text):
+        """清理转写文本中的标记"""
+        import re
+        # 移除语言标记和时间戳
+        text = re.sub(r'<\[zh\|.*?\]>', '', text)
+        text = re.sub(r'<\[.*?\]>', '', text)
+        # 移除多余的空白
+        text = re.sub(r'\s+', ' ', text)
+        return text.strip()
+
     def transcribe_file(self, audio_path):
         """转写整个音频文件"""
         try:
@@ -116,7 +126,8 @@ class SenseVoiceTranscriber:
                     elif isinstance(result, str):
                         text += result + " "
                 
-                return text.strip()
+                # 清理文本
+                return self.clean_transcript(text)
             else:
                 raise ValueError("No transcription results returned")
 
@@ -161,7 +172,9 @@ class SenseVoiceTranscriber:
                         text += result['text'] + " "
                     elif isinstance(result, str):
                         text += result + " "
-                return text.strip()
+                
+                # 清理文本
+                return self.clean_transcript(text)
             else:
                 return ""
 

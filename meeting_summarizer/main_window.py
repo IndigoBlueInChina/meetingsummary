@@ -1,6 +1,7 @@
 import sys
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                            QPushButton, QLabel, QFrame, QHBoxLayout, QStackedWidget, QMessageBox)
+                            QPushButton, QLabel, QFrame, QHBoxLayout, QStackedWidget, 
+                            QMessageBox, QDialog)
 from PyQt6.QtCore import Qt, QPoint, QEasingCurve, QPropertyAnimation, QParallelAnimationGroup, QTimer
 from PyQt6.QtGui import QIcon, QFont
 from utils.MeetingRecordProject import MeetingRecordProject
@@ -305,7 +306,9 @@ class MainWindow(QMainWindow):
     def show_history_page(self):
         """显示历史记录页面"""
         self.history_window = HistoryWindow()
-        if self.history_window.exec() == QDialog.DialogCode.Accepted:
+        result = self.history_window.exec()
+        
+        if result == QDialog.DialogCode.Accepted:
             # 获取选中的项目和操作
             selected_project = self.history_window.get_selected_project()
             selected_action = self.history_window.get_selected_action()
@@ -319,6 +322,9 @@ class MainWindow(QMainWindow):
                     # 用户选择编辑总结
                     self.summary_widget.project_manager = selected_project
                     self.show_summary_page()
+        else:
+            # 用户取消或关闭窗口，直接返回主页面
+            self.show_main_page()
 
     def create_feature_button(self, title, subtitle, icon_path):
         """创建功能按钮"""

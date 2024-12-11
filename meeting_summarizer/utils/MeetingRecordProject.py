@@ -18,29 +18,58 @@ class MeetingRecordProject:
         :param project_name: The name of the project, used for naming the root directory.
         """
         self.project_name = project_name
-        self.project_dir = None
-        self.audio_dir = None
-        self.transcript_dir = None
-        self.summary_dir = None
-        self.project_info_path = None
-        self.project_metadata = None
+        self._project_dir = None
+        self.record_file = None
+        self.transcript_file = None
+        self.summary_file = None
+        self.metadata = {}
+
+    @property
+    def project_dir(self):
+        """项目根目录"""
+        if not self._project_dir:
+            from config.settings import Settings
+            settings = Settings()
+            base_dir = settings.config_dir / "projects"
+            base_dir.mkdir(parents=True, exist_ok=True)
+            self._project_dir = str(base_dir / self.project_name)
+        return self._project_dir
+
+    @property
+    def audio_dir(self):
+        """音频文件目录"""
+        return os.path.join(self.project_dir, "audio")
+
+    @property
+    def transcript_dir(self):
+        """转写文件目录"""
+        return os.path.join(self.project_dir, "transcript")
+
+    @property
+    def summary_dir(self):
+        """总结文件目录"""
+        return os.path.join(self.project_dir, "summary")
+
+    @property
+    def project_info_path(self):
+        """项目信息文件路径"""
+        return os.path.join(self.project_dir, "project_info.json")
+
+    @property
+    def metadata_path(self):
+        """元数据文件路径"""
+        return os.path.join(self.project_dir, "metadata.json")
 
     def create(self):
         """
         This method is responsible for initializing all variables and creating the necessary directories 
         and project structure.
         """
-        self.project_dir = os.path.join(os.getcwd(), self.project_name)
-        self.audio_dir = os.path.join(self.project_dir, "audio")
-        self.transcript_dir = os.path.join(self.project_dir, "transcript")
-        self.summary_dir = os.path.join(self.project_dir, "summary")
-        self.project_info_path = os.path.join(self.project_dir, "project_info.json")
-
         # Create the necessary directories if they don't exist
         self._create_directories()
 
         # Initialize project metadata
-        self.project_metadata = {
+        self.metadata = {
             "project_name": self.project_name,
             "project_summary": "",
             "files": {
@@ -71,13 +100,13 @@ class MeetingRecordProject:
         :param audio_file_path: The path to the audio file (MP3, WAV).
         :raises ValueError: If there is already an audio file in the project.
         """
-        if self.project_metadata['files']['audio']:
+        if self.metadata['files']['audio']:
             raise ValueError("Only one audio file is allowed per project.")
         
         # Copy or move the audio file to the audio directory
         audio_file_name = os.path.basename(audio_file_path)
         os.rename(audio_file_path, os.path.join(self.audio_dir, audio_file_name))
-        self.project_metadata['files']['audio'] = os.path.join(self.audio_dir, audio_file_name)
+        self.metadata['files']['audio'] = os.path.join(self.audio_dir, audio_file_name)
         self._save_project_metadata()
 
     def add_transcript(self, transcript_file_path: str):
@@ -87,13 +116,13 @@ class MeetingRecordProject:
         :param transcript_file_path: The path to the transcript file.
         :raises ValueError: If there is already a transcript file in the project.
         """
-        if self.project_metadata['files']['transcript']:
+        if self.metadata['files']['transcript']:
             raise ValueError("Only one transcript file is allowed per project.")
         
         # Copy or move the transcript file to the transcript directory
         transcript_file_name = os.path.basename(transcript_file_path)
         os.rename(transcript_file_path, os.path.join(self.transcript_dir, transcript_file_name))
-        self.project_metadata['files']['transcript'] = os.path.join(self.transcript_dir, transcript_file_name)
+        self.metadata['files']['transcript'] = os.path.join(self.transcript_dir, transcript_file_name)
         self._save_project_metadata()
 
     def add_proofread_transcript(self, transcript_md_path: str):
@@ -104,7 +133,7 @@ class MeetingRecordProject:
         """
         transcript_md_name = os.path.basename(transcript_md_path)
         os.rename(transcript_md_path, os.path.join(self.transcript_dir, transcript_md_name))
-        self.project_metadata['files']['proofread_transcript'] = os.path.join(self.transcript_dir, transcript_md_name)
+        self.metadata['files']['proofread_transcript'] = os.path.join(self.transcript_dir, transcript_md_name)
         self._save_project_metadata()
 
     def add_summary(self, summary_file_path: str):
@@ -117,7 +146,7 @@ class MeetingRecordProject:
         os.rename(summary_file_path, os.path.join(self.summary_dir, summary_file_name))
         
         # Append the summary to the summaries list
-        self.project_metadata['files']['summaries'].append(os.path.join(self.summary_dir, summary_file_name))
+        self.metadata['files']['summaries'].append(os.path.join(self.summary_dir, summary_file_name))
         self._save_project_metadata()
 
     def _save_project_metadata(self):
@@ -126,7 +155,7 @@ class MeetingRecordProject:
         This includes project name, summary, and the file paths of the audio, transcript, and summaries.
         """
         with open(self.project_info_path, 'w') as json_file:
-            json.dump(self.project_metadata, json_file, indent=4)
+            json.dump(self.metadata, json_file, indent=4)
 
     def load_project_metadata(self):
         """
@@ -134,7 +163,7 @@ class MeetingRecordProject:
         """
         if os.path.exists(self.project_info_path):
             with open(self.project_info_path, 'r') as json_file:
-                self.project_metadata = json.load(json_file)
+                self.metadata = json.load(json_file)
 
     def set_project_summary(self, summary: str):
         """
@@ -142,7 +171,7 @@ class MeetingRecordProject:
         
         :param summary: The project summary text.
         """
-        self.project_metadata['project_summary'] = summary
+        self.metadata['project_summary'] = summary
         self._save_project_metadata()
 
     def get_project_info(self) -> dict:
@@ -151,7 +180,7 @@ class MeetingRecordProject:
         
         :return: Dictionary containing project metadata.
         """
-        return self.project_metadata
+        return self.metadata
 
     # File fetching methods:
 
@@ -162,7 +191,7 @@ class MeetingRecordProject:
         
         :return: Full path to the audio file, or an empty string if the file is not present.
         """
-        return self.project_metadata['files']['audio'] if self.project_metadata['files']['audio'] else ""
+        return self.metadata['files']['audio'] if self.metadata['files']['audio'] else ""
 
     def get_transcript_filename(self) -> str:
         """
@@ -171,7 +200,7 @@ class MeetingRecordProject:
         
         :return: Full path to the transcript file, or an empty string if the file is not present.
         """
-        return self.project_metadata['files']['transcript'] if self.project_metadata['files']['transcript'] else ""
+        return self.metadata['files']['transcript'] if self.metadata['files']['transcript'] else ""
 
     def get_proofread_transcript_filename(self) -> str:
         """
@@ -180,7 +209,7 @@ class MeetingRecordProject:
         
         :return: Full path to the proofread transcript file, or an empty string if the file is not present.
         """
-        return self.project_metadata['files']['proofread_transcript'] if self.project_metadata['files']['proofread_transcript'] else ""
+        return self.metadata['files']['proofread_transcript'] if self.metadata['files']['proofread_transcript'] else ""
 
     def get_summary_filename(self) -> str:
         """
@@ -189,7 +218,7 @@ class MeetingRecordProject:
         
         :return: Full path to the latest summary file, or an empty string if no summary is present.
         """
-        summaries = self.project_metadata['files']['summaries']
+        summaries = self.metadata['files']['summaries']
         return summaries[-1] if summaries else ""
 
     def get_summary_new_filename(self) -> str:
@@ -199,7 +228,7 @@ class MeetingRecordProject:
         
         :return: Full path to the new summary file with the appropriate version number.
         """
-        summaries = self.project_metadata['files']['summaries']
+        summaries = self.metadata['files']['summaries']
         new_version = len(summaries) + 1  # Versioning based on the number of existing summaries
         new_filename = f"summary_v{new_version:03}.md"
         return os.path.join(self.summary_dir, new_filename)
