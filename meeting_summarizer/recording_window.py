@@ -25,6 +25,7 @@ class RecordingWidget(QWidget):
         self.start_time = None
         self.recording_thread = None
         self.available_devices = []
+        self.project_manager = None
         
         # 初始化波形图数据
         self.waveform_data = []
@@ -260,9 +261,10 @@ class RecordingWidget(QWidget):
                 print("录音已在进行中")
                 return
             
-            # 创建新项目
+            # 创建新项目并保存到实例变量
             project_manager.create_project()
-            print(f"项目目录已创建: {project_manager.get_current_project()}")
+            self.project_manager = project_manager
+            print(f"项目目录已创建: {self.project_manager.get_current_project()}")
             
             # 重置波形图数据
             self.waveform_data = []
@@ -419,6 +421,7 @@ class RecordingWidget(QWidget):
             # 检查是否有音频文件生成
             if hasattr(self, 'audio_files') and self.audio_files:
                 print(f"[RecordingWidget] 录音完成，生成的文件: {self.audio_files}")
+                project_manager.audio_file = self.audio_files
                 # 切换到音频转文字页面
                 QTimer.singleShot(500, self.switch_to_transcribe_page)
             else:
@@ -449,14 +452,20 @@ class RecordingWidget(QWidget):
             
             # 获取主窗口并切换到处理页面
             main_window = self.window()
-            if main_window:
+            if main_window and self.project_manager:
+                # 更新 project_manager 的录音文件路径
+                self.project_manager.record_file = self.audio_files[0]
+                
+                # 更新 processing_widget 的 project_manager
+                main_window.processing_widget.project_manager = self.project_manager
+                
                 # 设置音频文件路径并切换到处理页面
                 main_window.processing_widget.set_audio_file(self.audio_files[0])
-                main_window.show_processing_page()
+                main_window.show_processing_page()  # 切换到处理页面
                 print(f"已切换到处理页面，音频文件: {self.audio_files[0]}")
             else:
-                print("错误：未找到主窗口")
-            
+                print("错误：未找到主窗口或 project_manager 未初始化")
+        
         except Exception as e:
             print(f"切换页面时发生错误: {str(e)}")
             import traceback

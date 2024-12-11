@@ -2,6 +2,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 from config.settings import Settings
+import json
 
 class ProjectManager:
     """项目目录管理类"""
@@ -13,26 +14,16 @@ class ProjectManager:
     
     def __init__(self):
         """初始化项目管理器"""
-        # 获取配置
-        self.settings = Settings()
-        # 默认项目根目录从settings获取
-        self.default_root = self.settings.get("project", "project_root")
-        print(f"默认项目根目录: {self.default_root}")
-        
-        # 确保根目录存在
-        os.makedirs(self.default_root, exist_ok=True)
-        
+
         # 当前项目目录
         self.current_project = None
         
-        # 尝试加载上次的项目
-        last_project = self.settings.get("project", "last_project")
-        if last_project and os.path.exists(last_project):
-            self.current_project = last_project
-            print(f"加载上次项目: {self.current_project}")
-        else:
-            print("没有可用的上次项目")
-    
+        # 文件名属性
+        self.record_file = "default_record.wav"
+        self.transcript_file = "default_transcript.txt"
+        self.summary_file = "default_summary.txt"
+        
+
     def set_root_dir(self, root_dir):
         """设置项目根目录"""
         if not os.path.exists(root_dir):
@@ -46,26 +37,50 @@ class ProjectManager:
     
     def create_project(self):
         """创建新项目目录"""
-        # 生成项目目录名（年月日时分）
-        project_name = datetime.now().strftime("%Y%m%d_%H%M")
-        project_path = os.path.join(self.get_root_dir(), project_name)
-        print(f"创建新项目目录: {project_path}")
-        
         try:
-            # 创建项目目录结构
-            os.makedirs(project_path, exist_ok=True)
-            os.makedirs(os.path.join(project_path, self.AUDIO_DIR), exist_ok=True)
-            os.makedirs(os.path.join(project_path, self.TRANSCRIPT_DIR), exist_ok=True)
-            os.makedirs(os.path.join(project_path, self.SUMMARY_DIR), exist_ok=True)
+            # 获取配置
+            self.settings = Settings()
+            # 默认项目根目录从settings获取
+            self.default_root = self.settings.get("project", "project_root")
+            print(f"默认项目根目录: {self.default_root}")
             
-            # 更新当前项目
-            self.current_project = project_path
-            self.settings.set("project", "last_project", project_path)
+            # 确保根目录存在
+            os.makedirs(self.default_root, exist_ok=True)
             
-            print(f"项目创建成功: {project_path}")
-            return project_path
+            # 生成项目目录名（年月日时分）
+            project_name = datetime.now().strftime("%Y%m%d_%H%M")
+            project_path = os.path.join(self.get_root_dir(), project_name)
+            print(f"创建新项目目录: {project_path}")
+            
+            try:
+                # 创建项目目录结构
+                os.makedirs(project_path, exist_ok=True)
+                os.makedirs(os.path.join(project_path, self.AUDIO_DIR), exist_ok=True)
+                os.makedirs(os.path.join(project_path, self.TRANSCRIPT_DIR), exist_ok=True)
+                os.makedirs(os.path.join(project_path, self.SUMMARY_DIR), exist_ok=True)
+                
+                # 修正：使用完整路径
+                self.record_file = os.path.join(project_path, self.AUDIO_DIR, "default_record.wav")
+                self.transcript_file = os.path.join(project_path, self.TRANSCRIPT_DIR, "default_transcript.txt")
+                self.summary_file = os.path.join(project_path, self.SUMMARY_DIR, "default_summary.txt")
+
+                # 更新当前项目
+                self.current_project = project_path
+                self.settings.set("project", "last_project", project_path)
+                
+                print(f"项目创建成功: {project_path}")
+                print(f"录音文件路径: {self.record_file}")
+                print(f"转写文件路径: {self.transcript_file}")
+                print(f"总结文件路径: {self.summary_file}")
+                
+                return project_path
+                
+            except Exception as e:
+                print(f"创建项目目录失败: {str(e)}")
+                return None
+            
         except Exception as e:
-            print(f"创建项目目录失败: {str(e)}")
+            print(f"创建项目失败: {str(e)}")
             return None
     
     def get_current_project(self):
@@ -172,5 +187,30 @@ class ProjectManager:
             traceback.print_exc()
             return None
 
-# 创建全局实例
+    def save_project_info(self):
+        """保存项目文件名到配置文件"""
+        project_info = {
+            "record_file": self.record_file,
+            "transcript_file": self.transcript_file,
+            "summary_file": self.summary_file
+        }
+        project_file_path = os.path.join(self.get_root_dir(), "project_config.json")
+        with open(project_file_path, 'w', encoding='utf-8') as f:
+            json.dump(project_info, f, ensure_ascii=False, indent=4)
+        print(f"项目信息已保存到: {project_file_path}")
+
+    def load_project_info(self):
+        """从配置文件加载项目文件名"""
+        project_file_path = os.path.join(self.get_root_dir(), "project_config.json")
+        if os.path.exists(project_file_path):
+            with open(project_file_path, 'r', encoding='utf-8') as f:
+                project_info = json.load(f)
+            self.record_file = project_info.get("record_file", self.record_file)
+            self.transcript_file = project_info.get("transcript_file", self.transcript_file)
+            self.summary_file = project_info.get("summary_file", self.summary_file)
+            print("项目信息已加载")
+        else:
+            print("配置文件不存在，使用默认值")
+
+global project_manager
 project_manager = ProjectManager()
