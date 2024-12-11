@@ -5,6 +5,12 @@ from text_processor.summarizer import generate_summary
 from utils.project_manager import project_manager
 import os
 from pydub import AudioSegment
+import numpy as np
+import torch
+import logging
+import traceback
+
+
 
 class ProcessingThread(QThread):
     progress_updated = pyqtSignal(str, int)  # 状态信息和进度值
@@ -22,18 +28,22 @@ class ProcessingThread(QThread):
             
             if not os.path.exists(audio_file_path):
                 raise FileNotFoundError(f"找不到音频文件: {audio_file_path}")
-                
+            
+            # 加载完整音频文件
             audio = AudioSegment.from_file(audio_file_path)
             total_length = len(audio)  # 总时长（毫秒）
 
             # 开始音频转写
             transcript_text = ""
-            segment_length = 1000  # 每段音频的长度（毫秒）
+            segment_length = 10000  # 每段音频的长度（毫秒）
 
             for i in range(0, total_length, segment_length):
-                segment = audio[i:i + segment_length]  # 获取音频段
-                # 调用转录方法，传递 AudioSegment 对象
-                transcript_text += transcribe_audio(segment)  # 使用音频段
+                # 获取音频段
+                segment = audio[i:i + segment_length]
+                
+                # 使用 transcribe_audio 处理音频段
+                segment_text = transcribe_audio(segment)
+                transcript_text += segment_text + " "
 
                 # 更新进度
                 progress = min(int((i + segment_length) / total_length * 100), 100)
@@ -44,7 +54,7 @@ class ProcessingThread(QThread):
             
             # 保存转写文本
             with open(self.project_manager.transcript_file, "w", encoding="utf-8") as f:
-                f.write(transcript_text)
+                f.write(transcript_text.strip())
                 
             self.finished.emit(True, "处理完成")
 
@@ -108,12 +118,19 @@ class ProcessingWidget(QWidget):
     def start_processing(self, audio_file=None):
         """开始处理音频文件"""
         try:
+            print("\n=== 开始音频处理 ===")
+            print(f"Project Manager: {self.project_manager}")
+            print(f"Record file: {self.project_manager.record_file if self.project_manager else 'None'}")
+            
+            if not self.project_manager or not self.project_manager.record_file:
+                raise ValueError("未设置有效的音频文件")
             
             # 开始处理线程
             self.processing_thread = ProcessingThread(self.project_manager)
             self.processing_thread.progress_updated.connect(self.update_progress)
             self.processing_thread.finished.connect(self.processing_finished)
             self.processing_thread.start()
+            print("处理线程已启动")
             
         except Exception as e:
             print(f"启动处理时发生错误: {str(e)}")
