@@ -8,7 +8,7 @@ from datetime import datetime
 import threading
 import time
 from audio_recorder.recorder import record_audio, list_audio_devices
-from utils.project_manager import project_manager
+from utils.MeetingRecordProject import MeetingRecordProject
 import os
 
 class RecordingWidget(QWidget):
@@ -261,10 +261,11 @@ class RecordingWidget(QWidget):
                 print("录音已在进行中")
                 return
             
-            # 创建新项目并保存到实例变量
-            project_manager.create_project()
-            self.project_manager = project_manager
-            print(f"项目目录已创建: {self.project_manager.get_current_project()}")
+            # 创建新的 MeetingRecordProject 对象
+            project_name = datetime.now().strftime("%Y%m%d_%H%M")
+            self.project_manager = MeetingRecordProject(project_name)
+            self.project_manager.create()  # 创建项目目录结构
+            print(f"项目目录已创建: {self.project_manager.project_dir}")
             
             # 重置波形图数据
             self.waveform_data = []
@@ -294,23 +295,25 @@ class RecordingWidget(QWidget):
             self.stop_button.setEnabled(True)
             self.record_button.setText("暂停")
             
-            # 创建并启动录音线程
+            # 开始录音线程
             def record_thread_func():
                 try:
                     print("\n=== 开始录音线程 ===")
-                    # 开始录音并获取文件路径
+                    # 使用 project_manager 获取项目目录
                     result = record_audio(
                         device_index=device_index,
                         sample_rate=44100,
                         segment_duration=300,
-                        project_dir=None
+                        project_dir=self.project_manager.project_dir  # 传入项目目录
                     )
                     
                     if isinstance(result, tuple) and len(result) == 2:
                         audio_files, status = result
                         if audio_files and isinstance(audio_files, list):
-                            self.audio_files = audio_files
-                            print(f"录音完成，文件路径: {audio_files}")
+                            # 通过 project_manager 设置录音文件
+                            self.project_manager.record_file = audio_files[0]
+                            self.audio_files = audio_files  # 保留这个用于兼容性
+                            print(f"录音完成，文件已保存到项目: {self.project_manager.project_name}")
                         else:
                             print("错误：录音函数未返回有效的文件路径列表")
                             self.audio_files = None
@@ -421,7 +424,6 @@ class RecordingWidget(QWidget):
             # 检查是否有音频文件生成
             if hasattr(self, 'audio_files') and self.audio_files:
                 print(f"[RecordingWidget] 录音完成，生成的文件: {self.audio_files}")
-                project_manager.audio_file = self.audio_files
                 # 切换到音频转文字页面
                 QTimer.singleShot(500, self.switch_to_transcribe_page)
             else:
@@ -454,15 +456,15 @@ class RecordingWidget(QWidget):
             main_window = self.window()
             if main_window and self.project_manager:
                 # 更新 project_manager 的录音文件路径
-                self.project_manager.record_file = self.audio_files[0]
-                
+                self.project_manager.add_audio(self.audio_files[0])
+                print(f"已更新项目管理器的录音文件路径: {self.project_manager.get_audio_filename()}")
+
                 # 更新 processing_widget 的 project_manager
-                main_window.processing_widget.project_manager = self.project_manager
+                main_window.processing_widget.set_project_manager(self.project_manager)
                 
-                # 设置音频文件路径并切换到处理页面
-                main_window.processing_widget.set_audio_file(self.audio_files[0])
+                # 切换到处理页面
                 main_window.show_processing_page()  # 切换到处理页面
-                print(f"已切换到处理页面，音频文件: {self.audio_files[0]}")
+                print(f"已切换到处理页面，使用项目: {self.project_manager.project_name}")
             else:
                 print("错误：未找到主窗口或 project_manager 未初始化")
         

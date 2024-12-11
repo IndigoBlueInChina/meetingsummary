@@ -1,137 +1,290 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget, 
-                            QLabel, QPushButton, QSplitter, QTextEdit, QListWidgetItem)
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QListWidget, 
+                            QLabel, QPushButton, QSplitter, QTextEdit, QListWidgetItem,
+                            QMessageBox, QWidget, QScrollArea)
 from PyQt6.QtCore import Qt
-from utils.project_manager import project_manager
-from utils.file_utils import read_file_content
+from utils.MeetingRecordProject import MeetingRecordProject
 import os
 from datetime import datetime
+from config.settings import Settings
 
-class HistoryWindow(QWidget):
+class HistoryWindow(QDialog):
+    # 定义操作类型常量
+    ACTION_TRANSCRIBE = "transcribe"
+    ACTION_EDIT_SUMMARY = "edit_summary"
+    ACTION_CLOSE = "close"
+    
     def __init__(self):
         super().__init__()
         self.setWindowTitle("历史会议记录")
         self.resize(1000, 600)
+        self.setModal(True)
+        
+        self.projects = []  # 存储 MeetingRecordProject 对象列表
+        self.selected_project = None
+        self.selected_action = None
+        self.settings = Settings()
+        
         self.setup_ui()
-        
-        # 加载上次的项目
-        project_manager.load_last_project()
-        
-        # 加载历史记录
         self.load_projects()
 
     def setup_ui(self):
         """设置界面"""
-        layout = QHBoxLayout(self)
+        main_layout = QVBoxLayout(self)
         
         # 创建分割器
         splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # 左侧项目列表
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
+        # 左侧项目列表面板
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
         
+        # 项目列表标题
+        list_title = QLabel("项目列表")
+        list_title.setStyleSheet("font-size: 14px; font-weight: bold;")
+        left_layout.addWidget(list_title)
+        
+        # 项目列表
         self.project_list = QListWidget()
         self.project_list.currentItemChanged.connect(self.on_project_selected)
-        
-        left_layout.addWidget(QLabel("项目列表"))
         left_layout.addWidget(self.project_list)
         
-        # 右侧内容显示
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
+        # 右侧内容显示面板
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
         
-        # 项目信息
-        self.project_info = QLabel()
-        right_layout.addWidget(self.project_info)
+        # 项目详情区域
+        self.project_title = QLabel()
+        self.project_title.setStyleSheet("font-size: 18px; font-weight: bold;")
+        right_layout.addWidget(self.project_title)
         
-        # 文件内容显示
+        # 内容显示区域（使用滚动区域）
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        content_widget = QWidget()
+        self.content_layout = QVBoxLayout(content_widget)
+        
+        self.summary_label = QLabel("会议总结")
+        self.summary_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        self.content_layout.addWidget(self.summary_label)
+        
         self.content_display = QTextEdit()
         self.content_display.setReadOnly(True)
-        right_layout.addWidget(self.content_display)
+        self.content_layout.addWidget(self.content_display)
         
-        # 添加到分割器
-        splitter.addWidget(left_widget)
-        splitter.addWidget(right_widget)
+        self.file_info = QLabel()
+        self.content_layout.addWidget(self.file_info)
         
-        # 设置分割器比例
+        scroll_area.setWidget(content_widget)
+        right_layout.addWidget(scroll_area)
+        
+        # 添加面板到分割器
+        splitter.addWidget(left_panel)
+        splitter.addWidget(right_panel)
         splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 3)
+        splitter.setStretchFactor(1, 2)
         
-        layout.addWidget(splitter)
+        main_layout.addWidget(splitter)
+        
+        # 底部按钮区域
+        button_layout = QHBoxLayout()
+        
+        self.transcribe_btn = QPushButton("音频转文字")
+        self.edit_summary_btn = QPushButton("编辑会议总结")
+        self.close_btn = QPushButton("关闭")
+        
+        self.transcribe_btn.clicked.connect(self.on_transcribe)
+        self.edit_summary_btn.clicked.connect(self.on_edit_summary)
+        self.close_btn.clicked.connect(self.on_close)
+        
+        button_layout.addWidget(self.transcribe_btn)
+        button_layout.addWidget(self.edit_summary_btn)
+        button_layout.addStretch()
+        button_layout.addWidget(self.close_btn)
+        
+        main_layout.addLayout(button_layout)
+        
+        # 初始时禁用功���按钮
+        self.transcribe_btn.setEnabled(False)
+        self.edit_summary_btn.setEnabled(False)
 
     def load_projects(self):
-        """加载所有项目"""
-        self.project_list.clear()
-        projects = project_manager.list_projects()
+        """加载所有有效的项目"""
+        try:
+            project_root = self.settings.config_dir / "projects"
+            if not os.path.exists(project_root):
+                print(f"项目根目录不存在: {project_root}")
+                return
+            
+            # 获取所有项目目录
+            project_dirs = []
+            for item in os.listdir(project_root):
+                project_path = os.path.join(project_root, item)
+                if os.path.isdir(project_path):
+                    project_dirs.append(project_path)
         
-        for project_path in projects:
-            # 获取项目名称（文件夹名）
-            project_name = os.path.basename(project_path)
-            try:
-                # 尝试将项目名称转换为日期时间
-                dt = datetime.strptime(project_name, "%Y%m%d_%H%M")
-                display_name = dt.strftime("%Y年%m月%d日 %H:%M")
-            except:
-                display_name = project_name
+            # 按时间倒序排序
+            project_dirs.sort(reverse=True)
+            
+            # 创建并加载项目
+            self.projects.clear()  # 清空现有项目列表
+            self.project_list.clear()  # 清空列表控件
+            
+            print("\n=== 开始加载项目列表 ===")
+            print(f"项目根目录: {project_root}")
+            print(f"找到 {len(project_dirs)} 个项目目录")
+            
+            for project_path in project_dirs:
+                project_name = os.path.basename(project_path)
+                print(f"\n正在加载项目: {project_name}")
+                print(f"项目路径: {project_path}")
                 
-            item = QListWidgetItem(display_name)
-            item.setData(Qt.ItemDataRole.UserRole, project_path)  # 存储完整路径
-            self.project_list.addItem(item)
+                try:
+                    
+                    # 创建项目对象
+                    project = MeetingRecordProject(project_name)
+
+                    # 检查项目信息文件是否存在
+                    if os.path.exists(project.project_info_path):
+                        print(f"项目: {project.project_name} 路径: {project.project_dir}")
+
+                        # 尝试加载项目元数据
+                        project.load_project_metadata()
+                        self.projects.append(project)
+                        item = QListWidgetItem(project_name)
+                        item.setData(Qt.ItemDataRole.UserRole, len(self.projects) - 1)
+                        self.project_list.addItem(item)
+                        print(f"成功加载项目: {project_name}")
+                    else:
+                        print(f"跳过无项目信息文件的项目: {project_name}")
+                        
+                except Exception as e:
+                    print(f"加载项目 {project_name} 失败: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+            
+            print(f"\n=== 项目加载完成 ===")
+            print(f"成功加载 {len(self.projects)} 个项目")
+            print(f"跳过 {len(project_dirs) - len(self.projects)} 个无效项目")
+                
+        except Exception as e:
+            print(f"加载项目列表时发生错误: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
     def on_project_selected(self, current, previous):
         """当选择项目时"""
         if not current:
             return
             
-        project_path = current.data(Qt.ItemDataRole.UserRole)
+        # 获取选中项目的索引
+        project_index = current.data(Qt.ItemDataRole.UserRole)
+        self.selected_project = self.projects[project_index]
+        print(f"\n=== 已选择项目: {self.selected_project.project_name} ===")
         
-        # 更新项目信息
-        self.update_project_info(project_path)
+        # 更新界面显示
+        self.update_project_display()
         
-        # 加载最新的转写文件
-        transcript_dir = os.path.join(project_path, "transcript")
-        if os.path.exists(transcript_dir):
-            transcript_files = [f for f in os.listdir(transcript_dir) 
-                              if f.endswith('_transcript.txt')]
-            if transcript_files:
-                latest_file = max(transcript_files, 
-                                key=lambda x: os.path.getctime(os.path.join(transcript_dir, x)))
-                file_path = os.path.join(transcript_dir, latest_file)
-                try:
-                    content = read_file_content(file_path)
-                    self.content_display.setText(content)
-                except Exception as e:
-                    self.content_display.setText(f"读取文件失败: {str(e)}")
-            else:
-                self.content_display.setText("未找到转写文件")
-        else:
-            self.content_display.setText("未找到转写目录")
+        # 更新按钮状态
+        self.update_button_states()
 
-    def update_project_info(self, project_path):
+    def update_project_display(self):
         """更新项目信息显示"""
         try:
-            # 获取项目名称
-            project_name = os.path.basename(project_path)
-            dt = datetime.strptime(project_name, "%Y%m%d_%H%M")
-            date_str = dt.strftime("%Y年%m月%d日 %H:%M")
+            # 显示项目标题
+            dt = datetime.strptime(self.selected_project.project_name, "%Y%m%d_%H%M")
+            title = dt.strftime("%Y年%m月%d日 %H:%M")
+            self.project_title.setText(f"会议记录：{title}")
             
-            # 获取音频文件信息
-            audio_dir = os.path.join(project_path, "audio")
-            audio_files = [f for f in os.listdir(audio_dir) if f.endswith('.wav')]
-            audio_count = len(audio_files)
+            # 获取项目内容
+            metadata = self.selected_project.metadata
+            if metadata.get('summary'):
+                # 显示会议总结
+                self.summary_label.setText("会议总结")
+                print(f"会议总结: {metadata['summary']}")
+                self.content_display.setText(metadata['summary'])
+            elif metadata.get('transcript'):
+                # 显示转写文本
+                self.summary_label.setText("会议记录")
+                print(f"会议记录: {metadata['transcript']}")
+                self.content_display.setText(metadata['transcript'])
+            else:
+                # 清空内容显示
+                self.summary_label.setText("项目信息")
+                self.content_display.clear()
             
-            # 获取转写文件信息
-            transcript_dir = os.path.join(project_path, "transcript")
-            transcript_files = [f for f in os.listdir(transcript_dir) 
-                              if f.endswith('_transcript.txt')]
-            transcript_count = len(transcript_files)
-            
-            info_text = f"""
-            会议时间：{date_str}
-            录音文件：{audio_count} 个
-            转写文件：{transcript_count} 个
-            """
-            self.project_info.setText(info_text)
+            # 显示文件信息
+            self.file_info.setText(self._format_file_info())
+            self.file_info.show()
             
         except Exception as e:
-            self.project_info.setText(f"获取项目信息失败: {str(e)}") 
+            print(f"更新项目显示时发生错误: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def _format_file_info(self):
+        """格式化文件信息显示"""
+        info = []
+        
+        # 音频文件
+        audio_files = self.selected_project.get_audio_filename()
+        print(f"音频文件: {audio_files}")
+        if os.path.exists(audio_files):
+            info.append(f"音频文件 1 个):")
+            info.append(f"  - {os.path.basename(audio_files)}")
+            
+        # 转写文件
+        transcript_files = self.selected_project.get_transcript_filename()
+        print(f"转写文件: {transcript_files}")
+        if os.path.exists(transcript_files):
+            info.append(f"\n转写文件 1 个):")
+            info.append(f"  - {os.path.basename(transcript_files)}")
+        
+        # 总结文件
+        if summary_files := self.selected_project.metadata.get('files', {}).get('summaries', []):
+            info.append(f"\n总结文件 ({len(summary_files)} 个):")
+            for f in summary_files:
+                info.append(f"  - {os.path.basename(f)}")
+        
+        print(f"文件信息: {info}")
+
+        return "\n".join(info) if info else "项目目录为空"
+
+    def update_button_states(self):
+        """更新按钮状态"""
+        if not self.selected_project:
+            self.transcribe_btn.setEnabled(False)
+            self.edit_summary_btn.setEnabled(False)
+            return
+            
+        metadata = self.selected_project.metadata
+        has_audio = os.path.exists(self.selected_project.get_audio_filename())
+        has_transcript = os.path.exists(self.selected_project.get_transcript_filename())
+        
+        self.transcribe_btn.setEnabled(has_audio and not has_transcript)
+        self.edit_summary_btn.setEnabled(has_transcript)
+
+    def on_transcribe(self):
+        """处理音频转文字请求"""
+        if self.selected_project:
+            self.selected_action = self.ACTION_TRANSCRIBE
+            self.accept()
+
+    def on_edit_summary(self):
+        """处理编辑会议总结请求"""
+        if self.selected_project:
+            self.selected_action = self.ACTION_EDIT_SUMMARY
+            self.accept()
+
+    def on_close(self):
+        """处理关闭请求"""
+        # 直接关闭窗口，不做任何询问
+        self.selected_action = self.ACTION_CLOSE
+        self.reject()
+
+    def get_selected_project(self):
+        """获取选中的项目对象"""
+        return self.selected_project
+
+    def get_selected_action(self):
+        """获取用户选择的操作类型"""
+        return self.selected_action

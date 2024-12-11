@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar, QMainWin
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from speech_to_text.transcriber import transcribe_audio
 from text_processor.summarizer import generate_summary
-from utils.project_manager import project_manager
+from utils.MeetingRecordProject import MeetingRecordProject
 import os
 from pydub import AudioSegment
 import numpy as np
@@ -23,7 +23,7 @@ class ProcessingThread(QThread):
     def run(self):
         try:
             # 使用 project_manager 中的实际录音文件路径
-            audio_file_path = self.project_manager.record_file
+            audio_file_path = self.project_manager.get_audio_filename()
             print(f"正在处理音频文件: {audio_file_path}")
             
             if not os.path.exists(audio_file_path):
@@ -50,14 +50,16 @@ class ProcessingThread(QThread):
                 self.progress_updated.emit("音频转写中...", progress)  # 发出进度更新信号
 
             # 确保转写文本目录存在
-            os.makedirs(os.path.dirname(self.project_manager.transcript_file), exist_ok=True)
+            transcript_file = self.project_manager.get_transcript_new_filename()
+            os.makedirs(os.path.dirname(transcript_file), exist_ok=True)
             
             # 保存转写文本
-            with open(self.project_manager.transcript_file, "w", encoding="utf-8") as f:
+            with open(transcript_file, "w", encoding="utf-8") as f:
                 f.write(transcript_text.strip())
                 
             self.finished.emit(True, "处理完成")
-
+            self.project_manager.add_transcript(transcript_file)
+            
         except Exception as e:
             print(f"处理过程中发生错误: {str(e)}")
             import traceback
@@ -85,8 +87,7 @@ class StyledProgressBar(QProgressBar):
 class ProcessingWidget(QWidget):
     def __init__(self):
         super().__init__()
-        self.audio_file = None
-        self.project_manager = project_manager
+        self.project_manager = None
         self.processing_thread = None
         self.stop_processing = False
         self.is_processing = False
@@ -145,20 +146,21 @@ class ProcessingWidget(QWidget):
         
         layout.addStretch()
         
-    def set_audio_file(self, audio_path):
-        """设置要处理的音频文件路径"""
-        self.audio_file = audio_path
-        print(f"设置音频文件: {audio_path}")
+    def set_project_manager(self, project_manager):
+        """设置项目管理器"""
+        self.project_manager = project_manager
+        print(f"已设置处理页面的项目管理器: {self.project_manager.project_name}")
         
-    def start_processing(self, audio_file=None):
+    def start_processing(self):
         """开始处理音频文件"""
         try:
             print("\n=== 开始音频处理 ===")
-            print(f"Project Manager: {self.project_manager}")
-            print(f"Record file: {self.project_manager.record_file if self.project_manager else 'None'}")
+            if not self.project_manager:
+                raise ValueError("未设置项目管理器")
             
-            if not self.project_manager or not self.project_manager.record_file:
-                raise ValueError("未设置有效的音频文件")
+            audio_file = self.project_manager.get_audio_filename()
+            if not audio_file:
+                raise ValueError("未找到音频文件")
             
             # 开始处理线程
             self.processing_thread = ProcessingThread(self.project_manager)
