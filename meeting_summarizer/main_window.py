@@ -320,7 +320,8 @@ class MainWindow(QMainWindow):
                     self.show_processing_page()
                 elif selected_action == HistoryWindow.ACTION_EDIT_SUMMARY:
                     # 用户选择编辑总结
-                    self.summary_widget.project_manager = selected_project
+                    self.summary_widget.set_project_manager(selected_project)
+                    self.summary_widget.load_content()  # 加载内容
                     self.show_summary_page()
         else:
             # 用户取消或关闭窗口，直接返回主页面

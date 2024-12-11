@@ -108,7 +108,7 @@ class SenseVoiceTranscriber:
             self.logger.info(f"Transcribing audio file: {audio_path}")
             results = self.model.generate(
                 input=audio_data,
-                batch_size_s=300,     # 每批处理300秒
+                batch_size_s=100,     # 每批处理300秒
                 hotword=None,         # 可选的热词列表
                 language='auto',      # 自动检测语言
                 signal_type='linear', # 线性信号
