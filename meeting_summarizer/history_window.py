@@ -2,12 +2,15 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QListWidget,
                             QLabel, QPushButton, QSplitter, QTextEdit, QListWidgetItem,
                             QMessageBox, QWidget)
 from PyQt6.QtCore import Qt
-from utils.project_manager import project_manager
-from utils.file_utils import read_file_content
+from utils.MeetingRecordProject import MeetingRecordProject
 import os
-from datetime import datetime
+from config.settings import Settings
 
 class HistoryWindow(QDialog):
+    # 定义操作类型常量
+    ACTION_TRANSCRIBE = "transcribe"
+    ACTION_EDIT_SUMMARY = "edit_summary"
+    
     def __init__(self):
         super().__init__()
         self.setWindowTitle("历史会议记录")
@@ -16,12 +19,11 @@ class HistoryWindow(QDialog):
         # 设置为模态窗口
         self.setModal(True)
         
+        self.selected_project = None  # 存储选中的项目对象
+        self.selected_action = None   # 存储用户选择的操作
+        self.settings = Settings()
+        
         self.setup_ui()
-        
-        # 加载上次的项目
-        project_manager.load_last_project()
-        
-        # 加载历史记录
         self.load_projects()
 
     def setup_ui(self):
@@ -92,22 +94,32 @@ class HistoryWindow(QDialog):
 
     def load_projects(self):
         """加载所有项目"""
-        self.project_list.clear()
-        projects = project_manager.list_projects()
-        
-        for project_path in projects:
-            # 获取项目名称（文件夹名）
-            project_name = os.path.basename(project_path)
-            try:
-                # 尝试将项目名称转换为日期时间
-                dt = datetime.strptime(project_name, "%Y%m%d_%H%M")
-                display_name = dt.strftime("%Y年%m月%d日 %H:%M")
-            except:
-                display_name = project_name
+        try:
+            project_root = self.settings.get("project", "project_root")
+            if not os.path.exists(project_root):
+                return
+            
+            # 获取所有项目目录
+            project_dirs = []
+            for item in os.listdir(project_root):
+                project_path = os.path.join(project_root, item)
+                if os.path.isdir(project_path):
+                    project_dirs.append(project_path)
+            
+            # 按时间倒序排序
+            project_dirs.sort(reverse=True)
+            
+            # 添加到列表
+            for project_path in project_dirs:
+                project_name = os.path.basename(project_path)
+                item = QListWidgetItem(project_name)
+                item.setData(Qt.ItemDataRole.UserRole, project_path)
+                self.project_list.addItem(item)
                 
-            item = QListWidgetItem(display_name)
-            item.setData(Qt.ItemDataRole.UserRole, project_path)  # 存储完整路径
-            self.project_list.addItem(item)
+        except Exception as e:
+            print(f"加载项目列表时发生错误: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
     def on_project_selected(self, current, previous):
         """当选择项目时"""
@@ -115,32 +127,22 @@ class HistoryWindow(QDialog):
             return
             
         project_path = current.data(Qt.ItemDataRole.UserRole)
+        project_name = os.path.basename(project_path)
+        
+        # 创建 MeetingRecordProject 对象
+        self.selected_project = MeetingRecordProject(project_name)
+        self.selected_project.project_dir = project_path
+        self.selected_project.load_project_metadata()
         
         # 更新项目信息
         self.update_project_info(project_path)
         
-        # 启用功能按钮
+        # 启用音频转文字按钮
         self.transcribe_btn.setEnabled(True)
-        self.edit_summary_btn.setEnabled(True)
         
-        # 加载最新的转写文件
-        transcript_dir = os.path.join(project_path, "transcript")
-        if os.path.exists(transcript_dir):
-            transcript_files = [f for f in os.listdir(transcript_dir) 
-                              if f.endswith('_transcript.txt')]
-            if transcript_files:
-                latest_file = max(transcript_files, 
-                                key=lambda x: os.path.getctime(os.path.join(transcript_dir, x)))
-                file_path = os.path.join(transcript_dir, latest_file)
-                try:
-                    content = read_file_content(file_path)
-                    self.content_display.setText(content)
-                except Exception as e:
-                    self.content_display.setText(f"读取文件失败: {str(e)}")
-            else:
-                self.content_display.setText("未找到转写文件")
-        else:
-            self.content_display.setText("未找到转写目录")
+        # 检查是否存在转写文件，决定是否启用编辑会议总结按钮
+        transcript_file = self.selected_project.get_transcript_filename()
+        self.edit_summary_btn.setEnabled(transcript_file and os.path.exists(transcript_file))
 
     def update_project_info(self, project_path):
         """更新项目信息显示"""
@@ -173,20 +175,27 @@ class HistoryWindow(QDialog):
 
     def on_transcribe(self):
         """处理音频转文字请求"""
-        current_item = self.project_list.currentItem()
-        if not current_item:
-            return
-            
-        project_path = current_item.data(Qt.ItemDataRole.UserRole)
-        # TODO: 实现音频转文字功能
-        QMessageBox.information(self, "提示", "音频转文字功能待实现")
+        if self.selected_project:
+            self.selected_action = self.ACTION_TRANSCRIBE
+            self.accept()
 
     def on_edit_summary(self):
         """处理编辑会议总结请求"""
-        current_item = self.project_list.currentItem()
-        if not current_item:
-            return
-            
-        project_path = current_item.data(Qt.ItemDataRole.UserRole)
-        # TODO: 实现编辑会议总结功能
-        QMessageBox.information(self, "提示", "编辑会议总结功能待实现")
+        if self.selected_project:
+            self.selected_action = self.ACTION_EDIT_SUMMARY
+            self.accept()
+
+    def accept(self):
+        """当用户确认选择时"""
+        if self.selected_project:
+            super().accept()  # 关闭对话框并返回 accept
+        else:
+            QMessageBox.warning(self, "提示", "请先选择一个项目")
+
+    def get_selected_project(self):
+        """获取选中的项目对象"""
+        return self.selected_project
+
+    def get_selected_action(self):
+        """获取用户选择的操作类型"""
+        return self.selected_action

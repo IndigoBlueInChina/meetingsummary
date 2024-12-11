@@ -1,13 +1,16 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QTextEdit, QPushButton, 
-                            QComboBox, QFrame, QHBoxLayout)
+                            QComboBox, QFrame, QHBoxLayout, QFileDialog)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
-from utils.project_manager import project_manager
+from utils.MeetingRecordProject import MeetingRecordProject
 import os
+from docx import Document
 
 class SummaryViewWidget(QWidget):
     def __init__(self):
         super().__init__()
+        self.project_manager = None
+        self.current_summary_file = None
         self.init_ui()
         
     def init_ui(self):
@@ -145,38 +148,42 @@ class SummaryViewWidget(QWidget):
         # 连接信号
         export_button.clicked.connect(self.export_summary)
         
-        # 加载最新的总结
-        self.load_latest_summary()
-        self.load_transcriptfile()
-        self.load_summaryfile()
-        
+    def load_content(self):
+        """加载所有必要的内容"""
+        try:
+            print("\n=== 加载总结视图内容 ===")
+            if not self.project_manager:
+                raise ValueError("未设置项目管理器，无法加载内容")
+            
+            print("开始加载转写文件...")
+            self.load_transcriptfile()
+            print("开始加载总结文件...")
+            self.load_summaryfile()
+            print("内容加载完成")
+            
+        except Exception as e:
+            print(f"加载内容时发生错误: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
     def load_latest_summary(self):
         """加载最新的会议总结"""
         try:
-            # 获取总结目录
-            summary_dir = project_manager.get_summary_dir()
-            if not os.path.exists(summary_dir):
+            if not self.project_manager:
+                self.summary_text.setText("未设置项目管理器")
+                return
+
+            summary_file = self.project_manager.get_summary_filename()
+            if not summary_file or not os.path.exists(summary_file):
                 self.summary_text.setText("未找到会议总结文件")
                 return
-            
-            # 查找最新的总结文件
-            summary_files = [f for f in os.listdir(summary_dir) 
-                           if f.endswith('_summary.txt')]
-            if not summary_files:
-                self.summary_text.setText("未找到会议总结文件")
-                return
-            
-            # 获取最新的文件
-            latest_file = max(summary_files, 
-                            key=lambda x: os.path.getctime(os.path.join(summary_dir, x)))
-            summary_path = os.path.join(summary_dir, latest_file)
             
             # 读取总结内容
-            with open(summary_path, 'r', encoding='utf-8') as f:
+            with open(summary_file, 'r', encoding='utf-8') as f:
                 summary_content = f.read()
             
             self.summary_text.setText(summary_content)
-            self.current_summary_file = summary_path
+            self.current_summary_file = summary_file
             
         except Exception as e:
             print(f"加载总结文件时发生错误: {str(e)}")
@@ -185,45 +192,45 @@ class SummaryViewWidget(QWidget):
             self.summary_text.setText(f"加载总结文件失败: {str(e)}")
     
     def load_transcriptfile(self):
-        """加载转录文件"""
-        transcript_file = project_manager.transcript_file
-        if not os.path.exists(transcript_file):
-            self.transcript_text.setText("未找到转录文件")
-            return
-        
-        file_extension = os.path.splitext(transcript_file)[1].lower()
-        if file_extension == ".txt":
+        """加载转写文件"""
+        try:
+            if not self.project_manager:
+                raise ValueError("未设置项目管理器")
+            
+            transcript_file = self.project_manager.get_transcript_filename()
+            if not transcript_file or not os.path.exists(transcript_file):
+                self.transcript_text.setText("未找到转写文件")
+                return
+            
             with open(transcript_file, 'r', encoding='utf-8') as f:
-                content = f.read()
-                self.transcript_text.setPlainText(content)
-        elif file_extension == ".pdf":
-            from PyPDF2 import PdfReader
-            with open(transcript_file, 'rb') as f:
-                reader = PdfReader(f)
-                content = ""
-                for page in reader.pages:
-                    content += page.extract_text() + '\n'
-                self.transcript_text.setPlainText(content)
-        elif file_extension == ".docx":
-            from docx import Document
-            doc = Document(transcript_file)
-            content = ""
-            for para in doc.paragraphs:
-                content += para.text + '\n'
-            self.transcript_text.setPlainText(content)
-        else:
-            self.transcript_text.setText("不支持的文件格式")
-
+                transcript_text = f.read()
+                self.transcript_text.setPlainText(transcript_text)
+            
+        except Exception as e:
+            print(f"加载转写文件时发生错误: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
     def load_summaryfile(self):
         """加载总结文件"""
-        summary_file = project_manager.summary_file
-        if not os.path.exists(summary_file):
-            self.summary_text.setText("未找到总结文件")
-            return
-        
-        with open(summary_file, 'r', encoding='utf-8') as f:
-            content = f.read()
-            self.summary_text.setPlainText(content)
+        try:
+            if not self.project_manager:
+                self.summary_text.setText("未设置项目管理器")
+                return
+
+            summary_file = self.project_manager.get_summary_filename()
+            if not summary_file or not os.path.exists(summary_file):
+                self.summary_text.setText("未找到总结文件")
+                return
+            
+            with open(summary_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+                self.summary_text.setPlainText(content)
+                
+        except Exception as e:
+            print(f"加载总结文件时发生错误: {str(e)}")
+            import traceback
+            traceback.print_exc()
     
     def toggle_edit(self):
         """切换编辑模式"""
@@ -241,12 +248,24 @@ class SummaryViewWidget(QWidget):
     def save_summary(self):
         """保存编辑后的总结"""
         try:
-            if hasattr(self, 'current_summary_file'):
-                with open(self.current_summary_file, 'w', encoding='utf-8') as f:
-                    f.write(self.summary_text.toPlainText())
-                self.summary_text.setReadOnly(True)
-                self.edit_button.setText("编辑")
-                self.save_button.setEnabled(False)
+            if not self.project_manager:
+                raise ValueError("未设置项目管理器")
+
+            # 获取新的总结文件名
+            summary_file = self.project_manager.get_summary_new_filename()
+            
+            # 保存内容
+            with open(summary_file, 'w', encoding='utf-8') as f:
+                f.write(self.summary_text.toPlainText())
+            
+            # 更新当前文件
+            self.current_summary_file = summary_file
+            
+            # 更新界面状态
+            self.summary_text.setReadOnly(True)
+            self.edit_button.setText("编辑")
+            self.save_button.setEnabled(False)
+            
         except Exception as e:
             print(f"保存总结文件时发生错误: {str(e)}")
             import traceback
@@ -256,28 +275,16 @@ class SummaryViewWidget(QWidget):
         """导出会议总结"""
         try:
             if hasattr(self, 'current_summary_file'):
-                from PyQt6.QtWidgets import QFileDialog
-                
-                # 获取保存路径
-                file_name = QFileDialog.getSaveFileName(
-                    self,
-                    "导出会议总结",
-                    os.path.expanduser("~/Documents"),
-                    "文本文件 (*.txt);;Word文档 (*.docx)"
-                )
-                
-                if file_name[0]:
-                    if file_name[0].endswith('.txt'):
-                        # 直接复制文本文件
-                        import shutil
-                        shutil.copy2(self.current_summary_file, file_name[0])
-                    elif file_name[0].endswith('.docx'):
-                        # 转换为Word文档
-                        from docx import Document
-                        doc = Document()
-                        doc.add_heading('会议纪要', 0)
-                        doc.add_paragraph(self.summary_text.toPlainText())
-                        doc.save(file_name[0])
+                if self.current_summary_file.endswith('.txt'):
+                    # 直接复制文本文件
+                    import shutil
+                    shutil.copy2(self.current_summary_file, self.current_summary_file)
+                elif self.current_summary_file.endswith('.docx'):
+                    # 转换为Word文档
+                    doc = Document()
+                    doc.add_heading('会议纪要', 0)
+                    doc.add_paragraph(self.summary_text.toPlainText())
+                    doc.save(self.current_summary_file)
         except Exception as e:
             print(f"导出总结文件时发生错误: {str(e)}")
             import traceback
@@ -305,3 +312,14 @@ class SummaryViewWidget(QWidget):
     def set_summary(self, text):
         """设置会议纪要文本"""
         self.summary_text.setPlainText(text)
+    
+    def set_project_manager(self, project_manager):
+        """设置项目管理器"""
+        try:
+            print(f"\n=== 设置总结视图的项目管理器 ===")
+            self.project_manager = project_manager
+            print(f"已设置项目管理器: {self.project_manager.project_name}")
+        except Exception as e:
+            print(f"设置项目管理器时发生错误: {str(e)}")
+            import traceback
+            traceback.print_exc()

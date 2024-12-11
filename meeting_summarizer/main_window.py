@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                             QPushButton, QLabel, QFrame, QHBoxLayout, QStackedWidget, QMessageBox)
 from PyQt6.QtCore import Qt, QPoint, QEasingCurve, QPropertyAnimation, QParallelAnimationGroup, QTimer
 from PyQt6.QtGui import QIcon, QFont
-from meeting_summarizer.utils import ProjectManager
+from utils.MeetingRecordProject import MeetingRecordProject
 from recording_window import RecordingWidget
 from processing_window import ProcessingWidget
 from summary_view import SummaryViewWidget
@@ -15,6 +15,7 @@ from tkinter import filedialog
 import shutil
 from utils.llm_statuscheck import LLMStatusChecker
 from config.settings import Settings  # Import Settings class
+from datetime import datetime
 
 class SlideStackedWidget(QStackedWidget):
     def __init__(self):
@@ -87,7 +88,7 @@ class MainWindow(QMainWindow):
         self.resize(800, 600)
         
         # 初始化项目管理器
-        self.project_manager = ProjectManager()
+        self.project_manager = MeetingRecordProject("default_project")
         
         # 创建中央部件
         central_widget = QWidget()
@@ -243,43 +244,46 @@ class MainWindow(QMainWindow):
         file_name = filedialog.askopenfilename(
             title="导入录音或文字稿",
             filetypes=[
-                ("音频文件", "*.wav;*.mp3"),
+                ("音频文件", "*.wav;*.mp3;*.m4a"),
                 ("文本文件", "*.txt;*.docx;*.pdf")
             ]
         )
         
         if file_name:
-            print(f"选择的文件: {file_name}")  # 这里可以根据需要处理文件路径
+            print(f"选择的文件: {file_name}")
             
             # 创建新项目
-            self.project_manager.create_project()  # 创建项目
-            file_ext = os.path.splitext(file_name)[1].lower()  # 获取文件扩展名
+            project_name = datetime.now().strftime("%Y%m%d_%H%M")
+            self.project_manager = MeetingRecordProject(project_name)
+            self.project_manager.create()
             
-            if file_ext in ['.wav', '.mp3']:
+            file_ext = os.path.splitext(file_name)[1].lower()
+            
+            if file_ext in ['.wav', '.mp3', '.m4a']:
                 # 复制音频文件到项目的 audio 目录
-                target_file = os.path.join(self.project_manager.get_audio_dir(), os.path.basename(file_name) )
-                shutil.copy2(file_name, target_file)  # 复制文件
-                self.project_manager.record_file = target_file  
-                self.processing_widget.project_manager = self.project_manager
+                target_file = os.path.join(self.project_manager.audio_dir, os.path.basename(file_name))
+                shutil.copy2(file_name, target_file)
+                self.project_manager.add_audio(target_file)
+                self.processing_widget.set_project_manager(self.project_manager)
                 print(f"音频文件已复制到: {target_file}")
                 
                 # 启动处理窗口
-                self.show_processing_page()  # 启动处理窗口
+                self.show_processing_page()
             
             elif file_ext in ['.txt', '.docx', '.pdf']:
                 # 复制文本文件到项目的 transcript 目录
-                target_file = os.path.join(self.project_manager.get_root_dir(), os.path.basename(file_name))
-                shutil.copy2(file_name, target_file)  # 复制文件
-                self.project_manager.transcript_file = target_file
-                self.summary_widget.project_manager = self.project_manager
+                target_file = os.path.join(self.project_manager.transcript_dir(), os.path.basename(file_name))
+                shutil.copy2(file_name, target_file)
+                self.project_manager.add_transcript(target_file)
+                self.summary_widget.set_project_manager(self.project_manager)  # 使用 set_project_manager 方法
                 print(f"文本文件已复制到: {target_file}")
                 
-                # 启动处理窗口
-                self.show_summary_page()  # 启动处理窗口
+                # 启动总结页面
+                self.show_summary_page()
             
             return file_name
         else:
-            print("未选择文件")  # Debug statement
+            print("未选择文件")
 
     def show_recording_page(self):
         """显示录音页面"""
@@ -301,7 +305,20 @@ class MainWindow(QMainWindow):
     def show_history_page(self):
         """显示历史记录页面"""
         self.history_window = HistoryWindow()
-        self.history_window.show()
+        if self.history_window.exec() == QDialog.DialogCode.Accepted:
+            # 获取选中的项目和操作
+            selected_project = self.history_window.get_selected_project()
+            selected_action = self.history_window.get_selected_action()
+            
+            if selected_project and selected_action:
+                if selected_action == HistoryWindow.ACTION_TRANSCRIBE:
+                    # 用户选择转写音频
+                    self.processing_widget.project_manager = selected_project
+                    self.show_processing_page()
+                elif selected_action == HistoryWindow.ACTION_EDIT_SUMMARY:
+                    # 用户选择编辑总结
+                    self.summary_widget.project_manager = selected_project
+                    self.show_summary_page()
 
     def create_feature_button(self, title, subtitle, icon_path):
         """创建功能按钮"""
@@ -374,20 +391,22 @@ class MainWindow(QMainWindow):
     def switch_to_summary_view(self):
         """切换到总结视图"""
         try:
-            # 找到 SummaryViewWidget
-            for i in range(self.stacked_widget.count()):
-                widget = self.stacked_widget.widget(i)
-                if isinstance(widget, SummaryViewWidget):
-                    # 加载转写文件
-                    widget.load_transcriptfile()
-                    # 切换到总结页面
-                    self.stacked_widget.setCurrentWidget(widget)
-                    print("成功切换到总结页面")
-                    return
-            
-            print("未找到总结页面组件")
+            print("\n=== 切换到总结视图 ===")
+            # 确保 project_manager 已经设置
+            if hasattr(self.processing_widget, 'project_manager') and self.processing_widget.project_manager:
+                # 设置 summary_view 的 project_manager
+                self.summary_widget.set_project_manager(self.processing_widget.project_manager)
+                # 加载内容
+                self.summary_widget.load_content()
+                # 切换页面
+                self.stacked_widget.setCurrentWidget(self.summary_widget)
+                print(f"已切换到总结视图，使用项目: {self.processing_widget.project_manager.project_name}")
+            else:
+                print("错误：处理页面的项目管理器未设置")
+                
         except Exception as e:
-            print(f"切换到总结页面时出错: {str(e)}")
+            print(f"切换到总结视图时发生错误: {str(e)}")
+            import traceback
             traceback.print_exc()
 
 def main():

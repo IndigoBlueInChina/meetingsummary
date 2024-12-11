@@ -12,7 +12,7 @@ import humanize
 from pathlib import Path
 import warnings
 from soundcard.mediafoundation import SoundcardRuntimeWarning
-from utils.project_manager import project_manager
+from utils.MeetingRecordProject import MeetingRecordProject
 
 # 过滤掉 data discontinuity 警告
 warnings.filterwarnings("ignore", category=SoundcardRuntimeWarning, message="data discontinuity in recording")
@@ -122,7 +122,6 @@ class RecordingStatus:
 
 
 def record_audio(device_index=None, sample_rate=44100, segment_duration=300, project_dir=None):
-
     """
     录制音频并自动分段保存
     """
@@ -132,8 +131,7 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
     
     # 确保使用正确的项目目录
     if project_dir is None:
-        project_dir = project_manager.get_current_project()
-        print(f"[record_audio] 使用项目管理器获取目录: {project_dir}")
+        raise ValueError("[record_audio] 未指定项目目录")
     
     audio_dir = os.path.join(project_dir, "audio")
     os.makedirs(audio_dir, exist_ok=True)
