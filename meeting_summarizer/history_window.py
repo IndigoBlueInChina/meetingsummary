@@ -1,16 +1,21 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget, 
-                            QLabel, QPushButton, QSplitter, QTextEdit, QListWidgetItem)
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QListWidget, 
+                            QLabel, QPushButton, QSplitter, QTextEdit, QListWidgetItem,
+                            QMessageBox, QWidget)
 from PyQt6.QtCore import Qt
 from utils.project_manager import project_manager
 from utils.file_utils import read_file_content
 import os
 from datetime import datetime
 
-class HistoryWindow(QWidget):
+class HistoryWindow(QDialog):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("历史会议记录")
         self.resize(1000, 600)
+        
+        # 设置为模态窗口
+        self.setModal(True)
+        
         self.setup_ui()
         
         # 加载上次的项目
@@ -21,7 +26,10 @@ class HistoryWindow(QWidget):
 
     def setup_ui(self):
         """设置界面"""
-        layout = QHBoxLayout(self)
+        main_layout = QVBoxLayout(self)  # 改用垂直布局作为主布局
+        
+        # 原有的水平分割布局
+        content_layout = QHBoxLayout()
         
         # 创建分割器
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -57,7 +65,30 @@ class HistoryWindow(QWidget):
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 3)
         
-        layout.addWidget(splitter)
+        content_layout.addWidget(splitter)
+        main_layout.addLayout(content_layout)
+        
+        # 添加底部按钮区域
+        button_layout = QHBoxLayout()
+        
+        self.transcribe_btn = QPushButton("音频转文字")
+        self.edit_summary_btn = QPushButton("编辑会议总结")
+        self.cancel_btn = QPushButton("取消")
+        
+        self.transcribe_btn.clicked.connect(self.on_transcribe)
+        self.edit_summary_btn.clicked.connect(self.on_edit_summary)
+        self.cancel_btn.clicked.connect(self.reject)  # 使用 QDialog 的 reject
+        
+        button_layout.addWidget(self.transcribe_btn)
+        button_layout.addWidget(self.edit_summary_btn)
+        button_layout.addStretch()  # 添加弹性空间
+        button_layout.addWidget(self.cancel_btn)
+        
+        main_layout.addLayout(button_layout)
+        
+        # 初始时禁用功能按钮
+        self.transcribe_btn.setEnabled(False)
+        self.edit_summary_btn.setEnabled(False)
 
     def load_projects(self):
         """加载所有项目"""
@@ -87,6 +118,10 @@ class HistoryWindow(QWidget):
         
         # 更新项目信息
         self.update_project_info(project_path)
+        
+        # 启用功能按钮
+        self.transcribe_btn.setEnabled(True)
+        self.edit_summary_btn.setEnabled(True)
         
         # 加载最新的转写文件
         transcript_dir = os.path.join(project_path, "transcript")
@@ -135,3 +170,23 @@ class HistoryWindow(QWidget):
             
         except Exception as e:
             self.project_info.setText(f"获取项目信息失败: {str(e)}") 
+
+    def on_transcribe(self):
+        """处理音频转文字请求"""
+        current_item = self.project_list.currentItem()
+        if not current_item:
+            return
+            
+        project_path = current_item.data(Qt.ItemDataRole.UserRole)
+        # TODO: 实现音频转文字功能
+        QMessageBox.information(self, "提示", "音频转文字功能待实现")
+
+    def on_edit_summary(self):
+        """处理编辑会议总结请求"""
+        current_item = self.project_list.currentItem()
+        if not current_item:
+            return
+            
+        project_path = current_item.data(Qt.ItemDataRole.UserRole)
+        # TODO: 实现编辑会议总结功能
+        QMessageBox.information(self, "提示", "编辑会议总结功能待实现")
