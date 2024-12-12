@@ -17,6 +17,7 @@ import shutil
 from utils.llm_statuscheck import LLMStatusChecker
 from config.settings import Settings  # Import Settings class
 from datetime import datetime
+from utils.flexible_logger import Logger
 
 class SlideStackedWidget(QStackedWidget):
     def __init__(self):

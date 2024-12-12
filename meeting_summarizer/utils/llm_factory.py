@@ -1,9 +1,9 @@
 from typing import Optional, Dict, Any
 import requests
 import json
-import logging
 from abc import ABC, abstractmethod
 from config.settings import Settings
+from utils.flexible_logger import Logger
 
 class LLMProvider(ABC):
     @abstractmethod
@@ -16,7 +16,7 @@ class OllamaProvider(LLMProvider):
         llm_config = settings.get_all()["llm"]
         self.model_name = llm_config["model_name"]
         self.api_url = llm_config["api_url"]
-        self.logger = logging.getLogger(__name__)
+        self.logger = Logger(__name__)
 
     def generate(self, prompt: str, **kwargs) -> Optional[str]:
         try:
@@ -41,7 +41,7 @@ class VLLMProvider(LLMProvider):
         settings = Settings()
         llm_config = settings.get_all()["llm"]
         self.api_url = llm_config["api_url"]
-        self.logger = logging.getLogger(__name__)
+        self.logger = Logger(__name__)
 
     def generate(self, prompt: str, **kwargs) -> Optional[str]:
         try:
@@ -68,7 +68,7 @@ class DeepseekProvider(LLMProvider):
         self.api_key = api_key
         self.api_url = "https://api.deepseek.com/v1/chat/completions"
         self.model_name = llm_config.get("deepseek_model", "deepseek-chat")
-        self.logger = logging.getLogger(__name__)
+        self.logger = Logger(__name__)
 
     def generate(self, prompt: str, **kwargs) -> Optional[str]:
         try:
@@ -95,7 +95,7 @@ class OpenAIProvider(LLMProvider):
         self.api_key = api_key
         self.api_url = "https://api.openai.com/v1/chat/completions"
         self.model_name = llm_config.get("openai_model", "gpt-3.5-turbo")
-        self.logger = logging.getLogger(__name__)
+        self.logger = Logger(__name__)
 
     def generate(self, prompt: str, **kwargs) -> Optional[str]:
         try:

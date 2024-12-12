@@ -1,5 +1,4 @@
 import os
-import logging
 import traceback
 import sys
 from funasr import AutoModel
@@ -7,7 +6,8 @@ import torch
 import numpy as np
 import soundfile as sf
 from pydub import AudioSegment
-
+from funasr.utils.postprocess_utils import rich_transcription_postprocess
+from utils.flexible_logger import Logger
 
 ### this is example code for other functions call
 ### 转写文件
@@ -24,7 +24,12 @@ from pydub import AudioSegment
 
 class SenseVoiceTranscriber:
     def __init__(self, model_id="iic/SenseVoiceSmall"):
-        self.logger = logging.getLogger(__name__)
+        self.logger = Logger(
+            name="transcriber",
+            console_output=True,
+            file_output=True,
+            log_level="INFO"
+        )
         
         try:
             self.logger.info("Creating ASR model...")
@@ -90,12 +95,7 @@ class SenseVoiceTranscriber:
 
     def clean_transcript(self, text):
         """清理转写文本中的标记"""
-        import re
-        # 移除语言标记和时间戳
-        text = re.sub(r'<\[zh\|.*?\]>', '', text)
-        text = re.sub(r'<\[.*?\]>', '', text)
-        # 移除多余的空白
-        text = re.sub(r'\s+', ' ', text)
+        text = rich_transcription_postprocess(text)  
         return text.strip()
 
     def transcribe_file(self, audio_path):
@@ -112,7 +112,7 @@ class SenseVoiceTranscriber:
                 hotword=None,         # 可选的热词列表
                 language='auto',      # 自动检测语言
                 signal_type='linear', # 线性信号
-                use_itn=True,        # 使用反标准化
+                use_itn= False,        # 使用反标准化, make sure export text without some flags, like <s> </s>
                 mode='offline'       # 离线模式
             )
 

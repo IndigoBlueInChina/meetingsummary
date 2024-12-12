@@ -3,11 +3,17 @@ import re
 import logging
 import json
 from typing import Dict, List, Optional, Tuple
+from langdetect import detect, DetectorFactory
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 from utils.llm_factory import LLMFactory
+from utils.chunker import TranscriptChunker
+from utils.flexible_logger import Logger
+
+# 设置 langdetect 为确定性模式，确保相同文本总是返回相同的语种
+DetectorFactory.seed = 0
 
 class TextProofreader:
     """
@@ -22,74 +28,157 @@ class TextProofreader:
     
     def __init__(self):
         self.llm = LLMFactory.get_default_provider()
-        self.logger = logging.getLogger(__name__)
+        self.logger = Logger(
+            name="proofreader",
+            console_output=True,
+            file_output=True,
+            log_level="INFO"
+        )
         self.console = Console()
+        self.chunker = TranscriptChunker(max_tokens=2000)  # 使用较小的块大小用于校对
+        self.logger.info("TextProofreader initialized")
     
-    def proofread(self, text: str) -> Dict[str, str]:
+    def _detect_language(self, text: str) -> str:
         """
-        Proofread the input text using Ollama's Qwen model.
+        检测文本语种
         
-        :param text: Input text to proofread
-        :return: Dictionary with original and proofread text, and change log
+        :param text: 输入文本
+        :return: 语种代码 (例如: 'en', 'zh-cn', 'ja', etc.)
         """
         try:
-            # Construct detailed prompt for proofreading
-            prompt = f"""You are a professional proofreader. Please proofread the following text:
-
-Proofreading Guidelines:
-- Correct spelling mistakes
-- Fix punctuation and special characters
-- Improve sentence structures for clarity
-- Replace overly colloquial expressions
-- Maintain the original meaning and tone
-- Do NOT add new content or significantly rewrite
-
-Original Text:
-{text}
-
-Proofread the text and provide:
-1. The proofread text
-2. A list of changes made (type of change, original, corrected)"""
-
-            # Generate response from Ollama
-            response = self.llm.generate(prompt)
+            lang = detect(text)
+            self.logger.info(f"Detected language: {lang}")
+            return lang
+        except Exception as e:
+            self.logger.warning(f"Language detection failed: {str(e)}, defaulting to 'en'")
+            return 'en'
+    
+    def proofread_text(self, text: str) -> Dict[str, str]:
+        """
+        Proofread the input text using LLM model.
+        """
+        try:
+            # 只在开始时检测一次源语言
+            source_lang = self._detect_language(text)
+            source_lang = "简体中文"
+            self.logger.info(f"Source text language detected: {source_lang}")
             
-            # 修改这里：response 的结构可能与预期不同
-            # 直接使用返回的文本内容
-            response_text = response if isinstance(response, str) else response.get('content', '') if isinstance(response, dict) else str(response)
+            chunks = self.chunker.chunk_transcript(text)
+            self.logger.info(f"Text split into {len(chunks)} chunks for proofreading")
             
-            # Parse the response
-            proofread_text, change_log = self._parse_proofreading_response(response_text)
+            proofread_chunks = []
+            all_changes = []
+            retry_count = 3
             
-            # Log the proofreading operation
-            print(f"Proofread text successfully. Changes: {len(change_log)}")
-            self.logger.info(f"Proofread text successfully. Changes: {len(change_log)}")
+            for i, chunk in enumerate(chunks, 1):
+                self.logger.info(f"Processing chunk {i}/{len(chunks)}")
+                
+                # Comprehensive proofreading prompt
+                prompt = f"""Proofread the following transcript with extreme precision:
+
+【Proofreading Guidelines】
+1. Output Language: {source_lang}
+2. Correction Scope:
+   - Correct spelling errors
+   - Refine colloquial expressions
+   - Maintain original meaning
+   - Preserve sentence structure and intent
+3. DO NOT:
+   - Rewrite or rephrase content
+   - Add or remove substantive information
+   - Change the core meaning
+   - Alter technical or specific terminology
+
+【Original Transcript】
+{chunk}
+
+Task:
+- Perform careful proofreading
+- Return results in strict format:
+- Write a concise summary
+- Return results in strict JSON format with:
+  * corrected_text: Proofread transcript
+  * keywords: 3-5 key terms
+  * summary: Brief overview (max 150 words)
+  * corrections_made: List of specific corrections
+
+Respond with utmost precision and respect for the original text.
+"""
+                self.logger.info(f"Sending chunk {i} for proofreading")
+                
+                for attempt in range(retry_count):
+                    try:
+                        response = self.llm.generate(prompt)
+                        if not response:
+                            raise Exception("Empty response from LLM")
+                        
+                        proofread_chunk, changes = self._parse_proofreading_response(response)
+                        
+                        if not proofread_chunk.strip():
+                            raise Exception("Empty proofread text")
+                        
+                        self.logger.info(f"Successfully proofread chunk {i}")
+                        proofread_chunks.append(proofread_chunk)
+                        all_changes.extend(changes)
+                        break
+                        
+                    except Exception as e:
+                        self.logger.warning(f"Error processing chunk {i} (attempt {attempt + 1}): {str(e)}")
+                        if attempt == retry_count - 1:
+                            self.logger.error(f"Failed to process chunk {i} after {retry_count} attempts")
+                            proofread_chunks.append(chunk)
+                            all_changes.append(f"[Error processing chunk {i}: {str(e)}]")
+                
+                self.logger.info(f"Completed chunk {i}/{len(chunks)}")
+            
+            final_proofread_text = '\n'.join(proofread_chunks)
+            
+            if all_changes:
+                self.logger.info(f"Total changes made: {len(all_changes)}")
+                for change in all_changes:
+                    self.logger.debug(f"Change: {change}")
             
             return {
-                'original_text': text,
-                'proofread_text': proofread_text,
-                'change_log': change_log
+                'proofread_text': final_proofread_text,
+                'changes': all_changes
             }
-        
+            
         except Exception as e:
             self.logger.error(f"Proofreading failed: {str(e)}")
             raise
     
-    def _parse_proofreading_response(self, response: str) -> Tuple[str, List[Dict]]:
+    def _parse_proofreading_response(self, response: str) -> Tuple[str, List[str]]:
         """
-        Parse the LLM's response and extract proofread text and change log.
-        
-        :param response: Raw response from the LLM
-        :return: Tuple of proofread text and change log
+        Parse the LLM's response to extract proofread text and changes.
         """
-        # Basic parsing logic - might need refinement based on actual model response
-        proofread_text = response
-        change_log = []
-        
-        # You might want to implement more sophisticated parsing here
-        # For example, extracting changes from the model's response
-        
-        return proofread_text, change_log
+        try:
+            # 确保response是字符串
+            response_text = response if isinstance(response, str) else str(response)
+            
+            try:
+                # 尝试解析JSON响应
+                response_data = json.loads(response_text)
+                
+                # 提取所需字段
+                proofread_text = response_data.get('corrected_text', '')
+                keywords = response_data.get('keywords', [])
+                summary = response_data.get('summary', '')
+                corrections = response_data.get('corrections_made', [])
+                
+                if not proofread_text.strip():
+                    raise ValueError("Empty proofread text in JSON response")
+                
+                self.logger.info(f"Successfully parsed JSON response with {len(corrections)} corrections")
+                return proofread_text, corrections
+                
+            except json.JSONDecodeError:
+                # 如果不是JSON格式，使用整个响应作为校对文本
+                self.logger.warning("Response is not in JSON format, using raw text")
+                return response_text.strip(), []
+            
+        except Exception as e:
+            self.logger.error(f"Failed to parse proofreading response: {str(e)}")
+            raise
     
     def display_proofreading_results(self, results: Dict[str, str]):
         """
@@ -129,12 +218,12 @@ Proofread the text and provide:
         :param output_file: Optional path to save proofread text
         """
         try:
+            self.logger.info(f"Processing file: {input_file}")
             # Read input file
             with open(input_file, 'r', encoding='utf-8') as f:
                 text = f.read()
             
-            # Proofread text
-            results = self.proofread(text)
+            results = self.proofread_text(text)
             
             # Display results
             self.display_proofreading_results(results)
@@ -161,8 +250,7 @@ def main():
 its impotant to test the proofreading capabilites of our systm."""
     
     try:
-        # Proofread sample text
-        results = proofreader.proofread(sample_text)
+        results = proofreader.proofread_text(sample_text)
         
         # Display results
         proofreader.display_proofreading_results(results)

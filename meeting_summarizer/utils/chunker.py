@@ -1,15 +1,19 @@
 import nltk
-import logging
 import re
 from typing import List
 import tiktoken
 from nltk.tokenize import sent_tokenize
 import os
 from pathlib import Path
+from utils.flexible_logger import Logger
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# 创建全局logger实例
+logger = Logger(
+    name="nltk_setup",
+    console_output=True,
+    file_output=True,
+    log_level="INFO"
+)
 
 # 设置本地 NLTK 数据目录（相对于当前文件的位置）
 local_nltk_data = os.path.join(os.path.dirname(__file__), 'nltk_data')
@@ -48,7 +52,13 @@ class TranscriptChunker:
     def __init__(self, max_tokens: int = 4000):
         self.max_tokens = max_tokens
         self.tokenizer = tiktoken.get_encoding("cl100k_base")
-        self.logger = logging.getLogger(__name__)
+        self.logger = Logger(
+            name="chunker",
+            console_output=True,
+            file_output=True,
+            log_level="INFO"
+        )
+        self.logger.info(f"TranscriptChunker initialized with max_tokens={max_tokens}")
 
     def detect_format(self, text: str) -> str:
         """

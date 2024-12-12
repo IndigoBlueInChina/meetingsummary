@@ -1,19 +1,30 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QTextEdit, QPushButton, 
-                            QComboBox, QFrame, QHBoxLayout, QFileDialog, QApplication, QMessageBox)
+                            QComboBox, QFrame, QHBoxLayout, QFileDialog, QApplication, QMessageBox, QGroupBox)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from utils.MeetingRecordProject import MeetingRecordProject
 import os
 from docx import Document
 from utils.llm_proofreader import TextProofreader
+from utils.lecture_notes_generator import LectureNotesGenerator
+from utils.meeting_notes_generator import MeetingNotesGenerator
+from utils.flexible_logger import Logger
+import traceback
 
 class SummaryViewWidget(QWidget):
     def __init__(self):
         super().__init__()
+        self.logger = Logger(
+            name="summary_view",
+            console_output=True,
+            file_output=True,
+            log_level="INFO"
+        )
         self.project_manager = None
         self.proofreader = TextProofreader()  # 初始化校对器
         self.current_summary_file = None
         self.init_ui()
+        self.logger.info("SummaryViewWidget initialized")
         
     def init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -109,6 +120,24 @@ class SummaryViewWidget(QWidget):
         export_layout.addWidget(self.format_combo)
         export_layout.addWidget(export_button)
         
+        # 添加模板类型选择
+        template_group = QGroupBox("模板类型")
+        template_layout = QHBoxLayout(template_group)
+        
+        template_label = QLabel("选择模板：")
+        self.template_combo = QComboBox()
+        self.template_combo.addItems(["会议纪要", "课堂笔记"])
+        
+        template_layout.addWidget(template_label)
+        template_layout.addWidget(self.template_combo)
+        
+        # 添加总结按钮
+        self.summarize_button = QPushButton("总结")
+        self.summarize_button.clicked.connect(self.generate_summary)
+        template_layout.addWidget(self.summarize_button)
+        
+        # 将模板选择组添加到顶部布局
+        top_layout.addWidget(template_group)
         top_layout.addStretch()  # 添加弹性空间
         top_layout.addWidget(export_group)
         
@@ -204,18 +233,18 @@ class SummaryViewWidget(QWidget):
     def load_content(self):
         """加载所有必要的内容"""
         try:
-            print("\n=== 加载总结视图内容 ===")
+            self.logger.info("开始加载总结视图内容")
             if not self.project_manager:
                 raise ValueError("未设置项目管理器，无法加载内容")
             
-            print("开始加载转写文件...")
+            self.logger.info("开始加载转写文件...")
             self.load_transcriptfile()
-            print("开始加载总结文件...")
+            self.logger.info("开始加载总结文件...")
             self.load_summaryfile()
-            print("内容加载完成")
+            self.logger.info("内容加载完成")
             
         except Exception as e:
-            print(f"加载内容时发生错误: {str(e)}")
+            self.logger.error(f"加载内容时发生错误: {str(e)}")
             import traceback
             traceback.print_exc()
     
@@ -239,7 +268,7 @@ class SummaryViewWidget(QWidget):
             self.current_summary_file = summary_file
             
         except Exception as e:
-            print(f"加载总结文件时发生错误: {str(e)}")
+            self.logger.error(f"加载总结文件时发生错误: {str(e)}")
             import traceback
             traceback.print_exc()
             self.summary_text.setText(f"加载总结文件失败: {str(e)}")
@@ -260,7 +289,7 @@ class SummaryViewWidget(QWidget):
                 self.transcript_text.setPlainText(transcript_text)
             
         except Exception as e:
-            print(f"加载转写文件时发生错误: {str(e)}")
+            self.logger.error(f"加载转写文件时发生错误: {str(e)}")
             import traceback
             traceback.print_exc()
     
@@ -281,7 +310,7 @@ class SummaryViewWidget(QWidget):
                 self.summary_text.setPlainText(content)
                 
         except Exception as e:
-            print(f"加载总结文件时发生错误: {str(e)}")
+            self.logger.error(f"加载总结文件时发生错误: {str(e)}")
             import traceback
             traceback.print_exc()
     
@@ -320,7 +349,7 @@ class SummaryViewWidget(QWidget):
             self.save_button.setEnabled(False)
             
         except Exception as e:
-            print(f"保存总结文件时发生错误: {str(e)}")
+            self.logger.error(f"保存总结文件时发生错误: {str(e)}")
             import traceback
             traceback.print_exc()
     
@@ -339,66 +368,69 @@ class SummaryViewWidget(QWidget):
                     doc.add_paragraph(self.summary_text.toPlainText())
                     doc.save(self.current_summary_file)
         except Exception as e:
-            print(f"导出总结文件时发生错误: {str(e)}")
+            self.logger.error(f"导出总结文件时发生错误: {str(e)}")
             import traceback
             traceback.print_exc()
     
     def proofread_transcript(self):
         """处理校对请求"""
         try:
-            # 获取当前转写文本
-            current_text = self.transcript_text.toPlainText()
-            if not current_text.strip():
-                return
-            
-            # 禁用校对按钮，显示进度状态
+            self.logger.info("开始校对文本...")
             self.proofread_button.setEnabled(False)
             self.proofread_button.setText("校对中...")
-            QApplication.processEvents()  # 更新UI
+            
+            # 获取当前文本
+            current_text = self.transcript_text.toPlainText()
+            if not current_text.strip():
+                error_msg = "没有可用的文本内容"
+                self.logger.warning(error_msg)
+                QMessageBox.warning(self, "错误", error_msg)
+                return
             
             try:
                 # 发送文本进行校对
-                results = self.proofreader.proofread(current_text)
+                self.logger.info("正在进行文本校对...")
+                results = self.proofreader.proofread_text(current_text)
                 
                 if results and 'proofread_text' in results:
                     # 更新文本框内容
                     self.transcript_text.setPlainText(results['proofread_text'])
                     
-                    # 如果有变更日志，可以显示在状态栏或弹窗中
-                    if 'change_log' in results and results['change_log']:
-                        changes = "\n".join([f"- {change}" for change in results['change_log']])
-                        QMessageBox.information(
-                            self,
-                            "校对完成",
-                            f"文本已校对完成，主要变更：\n{changes}"
-                        )
-                    else:
-                        QMessageBox.information(self, "校对完成", "文本校对完成")
-                        
                     # 保存校对后的文本
                     if self.project_manager:
-                        new_transcript_file = self.project_manager.get_transcript_new_filename()
-                        with open(new_transcript_file, 'w', encoding='utf-8') as f:
-                            f.write(results['proofread_text'])
-                        # 更新项目元数据
-                        self.project_manager.add_transcript(new_transcript_file)
-                
+                        try:
+                            new_transcript_file = self.project_manager.get_transcript_new_filename()
+                            self.logger.info(f"保存校对后的文本... {new_transcript_file}")
+                            with open(new_transcript_file, 'w', encoding='utf-8') as f:
+                                f.write(results['proofread_text'])
+                            self.project_manager.add_proofread_transcript(new_transcript_file)
+                            self.logger.info(f"校对文本已保存至: {new_transcript_file}")
+                        except Exception as save_error:
+                            error_msg = f"保存校对文本时发生错误: {str(save_error)}"
+                            self.logger.error(error_msg)
+                            QMessageBox.warning(self, "保存失败", error_msg)
+                else:
+                    error_msg = "校对结果格式错误"
+                    self.logger.error(error_msg)
+                    QMessageBox.warning(self, "校对失败", error_msg)
+                    
             except Exception as e:
-                QMessageBox.warning(
-                    self,
-                    "校对失败",
-                    f"校对过程中发生错误：{str(e)}"
-                )
+                error_msg = f"校对过程中发生错误：{str(e)}"
+                self.logger.error(error_msg)
+                self.logger.debug(f"错误详情: {traceback.format_exc()}")
+                QMessageBox.warning(self, "校对失败", error_msg)
                 
         except Exception as e:
-            print(f"校对过程中发生错误: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            error_msg = f"校对功能发生错误: {str(e)}"
+            self.logger.error(error_msg)
+            self.logger.debug(f"错误详情: {traceback.format_exc()}")
+            QMessageBox.warning(self, "错误", error_msg)
             
         finally:
             # 恢复校对按钮状态
             self.proofread_button.setEnabled(True)
             self.proofread_button.setText("校对")
+            self.logger.info("校对操作结束")
     
     def set_transcript(self, text):
         """设置会议记录文本"""
@@ -411,13 +443,10 @@ class SummaryViewWidget(QWidget):
     def set_project_manager(self, project_manager):
         """设置项目管理器"""
         try:
-            print(f"\n=== 设置总结视图的项目管理器 ===")
             self.project_manager = project_manager
-            print(f"已设置项目管理器: {self.project_manager.project_name}")
+            self.logger.info(f"已设置项目管理器: {project_manager}")
         except Exception as e:
-            print(f"设置项目管理器时发生错误: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            self.logger.error(f"设置项目管理器失败: {str(e)}")
     
     def check_llm_status(self):
         """检查LLM服务状态"""
@@ -461,7 +490,7 @@ class SummaryViewWidget(QWidget):
                     }
                 """)
         except Exception as e:
-            print(f"检查LLM状态时发生错误: {str(e)}")
+            self.logger.error(f"检查LLM状态时发生错误: {str(e)}")
             self.llm_status_button.setText("LLM状态未知")
             self.llm_status_button.setStyleSheet("""
                 QPushButton {
@@ -482,3 +511,49 @@ class SummaryViewWidget(QWidget):
         # TODO: 实现打开设置页面的功能
         # 这里需要调用主窗口的方法来打开设置页面
         print("TODO: 打开LLM设置页面")
+
+    def generate_summary(self):
+        """生成总结"""
+        try:
+            # 获取当前文本内容
+            text = self.transcript_text.toPlainText()
+            if not text.strip():
+                QMessageBox.warning(self, "错误", "没有可用的文本内容")
+                return
+            
+            # 根据模板类型选择生成器
+            template_type = self.template_combo.currentText()
+            
+            if template_type == "课堂笔记":
+                generator = LectureNotesGenerator()
+            else:  # 会议纪要
+                generator = MeetingNotesGenerator()
+            
+            # 生成总结
+            try:
+                summary = generator.generate_notes(text)
+                self.summary_text.setPlainText(summary)
+                
+                # 如果项目管理器存在，保存总结
+                if self.project_manager:
+                    summary_file = self.project_manager.get_summary_new_filename()
+                    with open(summary_file, 'w', encoding='utf-8') as f:
+                        f.write(summary)
+                    self.current_summary_file = summary_file
+                    
+            except Exception as e:
+                QMessageBox.warning(
+                    self,
+                    "总结生成失败",
+                    f"生成总结时发生错误：{str(e)}"
+                )
+                
+        except Exception as e:
+            self.logger.error(f"生成总结时发生错误: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.warning(
+                self,
+                "错误",
+                f"生成总结时发生错误：{str(e)}"
+            )
