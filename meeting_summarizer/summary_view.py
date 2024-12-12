@@ -392,6 +392,7 @@ class SummaryViewWidget(QWidget):
                 self.logger.info("正在进行文本校对...")
                 results = self.proofreader.proofread_text(current_text)
                 
+                # 只关注校对后的文本，忽略修改列表
                 if results and 'proofread_text' in results:
                     # 更新文本框内容
                     self.transcript_text.setPlainText(results['proofread_text'])
@@ -400,7 +401,6 @@ class SummaryViewWidget(QWidget):
                     if self.project_manager:
                         try:
                             new_transcript_file = self.project_manager.get_transcript_new_filename()
-                            self.logger.info(f"保存校对后的文本... {new_transcript_file}")
                             with open(new_transcript_file, 'w', encoding='utf-8') as f:
                                 f.write(results['proofread_text'])
                             self.project_manager.add_proofread_transcript(new_transcript_file)
@@ -526,7 +526,7 @@ class SummaryViewWidget(QWidget):
             
             if template_type == "课堂笔记":
                 generator = LectureNotesGenerator()
-            else:  # 会议纪要
+            else:  # ��议纪要
                 generator = MeetingNotesGenerator()
             
             # 生成总结
