@@ -2,13 +2,10 @@ import os
 import re
 import json
 from typing import Dict, List, Optional, Tuple
-from langdetect import detect, DetectorFactory
 from utils.llm_factory import LLMFactory
 from utils.chunker import TranscriptChunker
 from utils.flexible_logger import Logger
-
-# 设置 langdetect 为确定性模式
-DetectorFactory.seed = 0
+from utils.language_detector import LanguageDetector
 
 class TextProofreader:
     def __init__(self):
@@ -19,7 +16,8 @@ class TextProofreader:
             file_output=True,
             log_level="INFO"
         )
-        self.chunker = TranscriptChunker(max_tokens=2000)
+        self.chunker = TranscriptChunker(max_tokens=200)
+        self.language_detector = LanguageDetector()
         self.logger.info("TextProofreader initialized")
     
     def proofread_text(self, text: str) -> Dict[str, str]:
@@ -27,7 +25,7 @@ class TextProofreader:
         使用LLM模型校对输入文本
         """
         try:
-            source_lang = self._detect_language(text)
+            source_lang = self.language_detector.detect_language(text)
             self.logger.info(f"Source text language detected: {source_lang}")
             
             chunks = self.chunker.chunk_transcript(text)
@@ -39,31 +37,19 @@ class TextProofreader:
             
             for i, chunk in enumerate(chunks, 1):
                 self.logger.info(f"Processing chunk {i}/{len(chunks)}")
+                self.logger.info(f"Original chunk {i} length: {len(chunk)}")
                 
-                prompt = f"""Proofread the following transcript with extreme precision:
+                prompt = f"""
+【Expert Knowledge Domain and Keyword Precise Extraction】
 
-【Proofreading Guidelines】
-1. Language: {source_lang}
-2. Correction Scope:
-   - Correct spelling errors
-   - Refine colloquial expressions
-   - Maintain original meaning
-   - Preserve sentence structure and intent
-3. DO NOT:
-   - Rewrite or rephrase content
-   - Add or remove substantive information
-   - Change the core meaning
-   - Alter technical or specific terminology
+【Requirements】
+- Language: {source_lang}
+- 仅仅修改错别字，不要修改语法，不要修改句子结构，不要做任何其他的修改，直接返回修改后的文本。
 
-【Original Transcript】
+【Text to Analyze】
 {chunk}
-
-Return response in JSON format:
-{{
-    "corrected_text": "校对后的文本",
-    "corrections_made": ["修改1", "修改2", ...]
-}}
 """
+                # self.logger.info(f"Prompt for chunk {i}: {prompt}")
                 for attempt in range(retry_count):
                     try:
                         # 使用 LLMProvider 的 generate 方法
@@ -76,14 +62,16 @@ Return response in JSON format:
                         if not response:
                             raise Exception("Empty response from LLM")
                         
-                        proofread_chunk, changes = self._parse_proofreading_response(response)
+                        self.logger.info(f"Proofread chunk {i}: {response}")
+                        proofread_chunk = response
+                        # proofread_chunk, changes = self._parse_proofreading_response(response)
                         
                         if not proofread_chunk.strip():
                             raise Exception("Empty proofread text")
                         
                         self.logger.info(f"Successfully proofread chunk {i}")
                         proofread_chunks.append(proofread_chunk)
-                        all_changes.extend(changes)
+                        # all_changes.extend(changes)
                         break
                         
                     except Exception as e:
@@ -91,7 +79,7 @@ Return response in JSON format:
                         if attempt == retry_count - 1:
                             self.logger.error(f"Failed to process chunk {i} after {retry_count} attempts")
                             proofread_chunks.append(chunk)
-                            all_changes.append(f"[Error processing chunk {i}: {str(e)}]")
+                            # all_changes.append(f"[Error processing chunk {i}: {str(e)}]")
             
             final_proofread_text = '\n'.join(proofread_chunks)
             
@@ -104,63 +92,6 @@ Return response in JSON format:
             self.logger.error(f"Proofreading failed: {str(e)}")
             raise
     
-    def _detect_language(self, text: str) -> str:
-        """
-        检测文本语种
-        
-        Args:
-            text: 输入文本
-        Returns:
-            str: 语言名称（例如：'简体中文', '繁体中文', '英文', '日文'）
-        """
-        try:
-            lang = detect(text)
-            self.logger.info(f"Detected language code: {lang}")
-            
-            # 对中文进行进一步判断
-            if lang == 'zh':
-                # 简繁体特征字符集
-                simplified_chars = '简体国际办产动师见关说证'
-                traditional_chars = '簡體國際辦產動師見關說證'
-                
-                # 计算简繁体字符出现的次数
-                simplified_count = sum(text.count(char) for char in simplified_chars)
-                traditional_count = sum(text.count(char) for char in traditional_chars)
-                
-                if traditional_count > simplified_count:
-                    self.logger.info("Detected traditional Chinese characters")
-                    return '繁体中文'
-                else:
-                    self.logger.info("Detected simplified Chinese characters")
-                    return '简体中文'
-            
-            # 其他语言映射
-            lang_mapping = {
-                'en': '英文',
-                'zh-cn': '简体中文',
-                'zh-tw': '繁体中文',
-                'ja': '日文',
-                'ko': '韩文',
-                'fr': '法文',
-                'de': '德文',
-                'es': '西班牙文',
-                'it': '意大利文',
-                'ru': '俄文',
-                'ar': '阿拉伯文',
-                'hi': '印地文',
-                'pt': '葡萄牙文',
-                'vi': '越南文',
-                'th': '泰文'
-            }
-            
-            detected_lang = lang_mapping.get(lang[:2], '未知语言')
-            self.logger.info(f"Mapped to language name: {detected_lang}")
-            return detected_lang
-            
-        except Exception as e:
-            self.logger.warning(f"Language detection failed: {str(e)}, defaulting to English")
-            return '英文'
-    
     def _parse_proofreading_response(self, response: str) -> Tuple[str, List[str]]:
         """
         解析LLM返回的校对结果
@@ -170,14 +101,22 @@ Return response in JSON format:
         Returns:
             Tuple[str, List[str]]: (校对后的文本, 修改列表)
         """
+        self.logger.info(f"Trying to parse response: {response}")
+        return response.strip(),[]
         try:
             # 尝试解析JSON响应
-            response_data = json.loads(response)
+            self.logger.info(f"Trying to parse response: {response}")
             
+            response_data = json.loads(response)
+            self.logger.info("JSON response: {response_data}")
+
             # 提取校对后的文本和修改列表
             proofread_text = response_data.get('corrected_text', '')
+            self.logger.info(f"Proofread text: {proofread_text}")
+
             corrections = response_data.get('corrections_made', [])
-            
+            self.logger.info(f"Corrections: {corrections}")
+
             # 验证校对后的文本不为空
             if not proofread_text.strip():
                 raise ValueError("Empty proofread text in response")

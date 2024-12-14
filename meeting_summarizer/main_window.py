@@ -274,11 +274,12 @@ class MainWindow(QMainWindow):
             
             elif file_ext in ['.txt', '.docx', '.pdf']:
                 # 复制文本文件到项目的 transcript 目录
-                target_file = os.path.join(self.project_manager.transcript_dir(), os.path.basename(file_name))
+                target_file = os.path.join(self.project_manager.transcript_dir, os.path.basename(file_name)) 
                 shutil.copy2(file_name, target_file)
                 self.project_manager.add_transcript(target_file)
                 self.summary_widget.set_project_manager(self.project_manager)  # 使用 set_project_manager 方法
                 print(f"文本文件已复制到: {target_file}")
+                self.summary_widget.load_content()  # 加载内容
                 
                 # 启动总结页面
                 self.show_summary_page()
@@ -321,7 +322,7 @@ class MainWindow(QMainWindow):
                     self.show_processing_page()
                 elif selected_action == HistoryWindow.ACTION_EDIT_SUMMARY:
                     # 用户选择编辑总结
-                    self.summary_widget.set_project_manager(selected_project)
+                    self.summary_widget.project_manager = selected_project
                     self.summary_widget.load_content()  # 加载内容
                     self.show_summary_page()
         else:

@@ -8,16 +8,16 @@ from utils.llm_factory import LLMFactory
 from utils.chunker import TranscriptChunker
 
 class LectureNotesGenerator:
-    def __init__(self, model='qwen'):
+    def __init__(self, model=''):
         """
         Initialize lecture notes generator
         
-        :param model: LLM model name, default is 'qwen'
+        :param model: LLM model name, default is ''
         """
         self.model = model
         self.settings = Settings()
         self.prompt_dir = Path(self.settings.config_dir) / "prompts"
-        self.default_prompt_path = Path(__file__).parent.parent / "prompts" / "lecture_notes.md"
+        self.default_prompt_path = Path(__file__).parent / "prompts" / "lecture_notes.md"
         
         # 初始化logger
         self.logger = Logger(
@@ -58,6 +58,8 @@ class LectureNotesGenerator:
 
     def _load_prompt(self):
         """加载提示词模板"""
+        self.logger.debug(f"Loading user_prompt_path: {self.user_prompt_path}")
+        self.logger.debug(f"Loading default_prompt_path: {self.default_prompt_path}")   
         try:
             # 优先使用用户配置的提示词
             if self.user_prompt_path.exists():
@@ -106,7 +108,8 @@ class LectureNotesGenerator:
                 
                 # 填充提示词模板
                 prompt = prompt_template.format(transcript_text=chunk)
-                
+                self.logger.info(f"Prompt for chunk {i}: {prompt}")
+
                 # 添加重试逻辑
                 for attempt in range(retry_count):
                     try:
@@ -118,7 +121,7 @@ class LectureNotesGenerator:
                         # 解析LLM响应
                         chunk_notes = json.loads(response)
                         all_notes_data.append(chunk_notes)
-                        self.logger.debug(f"Successfully processed chunk {i}")
+                        self.logger.info(f"Successfully processed chunk {i}")
                         break  # 成功处理，跳出重试循环
                         
                     except json.JSONDecodeError as e:
@@ -241,7 +244,7 @@ def main():
         transcript = f.read()
 
     # Create notes generator
-    notes_generator = LectureNotesGenerator(model='qwen')
+    notes_generator = LectureNotesGenerator(model='')
     
     # Generate notes
     markdown_notes = notes_generator.generate_notes(transcript)

@@ -6,6 +6,7 @@ from nltk.tokenize import sent_tokenize
 import os
 from pathlib import Path
 from utils.flexible_logger import Logger
+from utils.language_detector import LanguageDetector
 
 # 创建全局logger实例
 logger = Logger(
@@ -38,8 +39,9 @@ def ensure_nltk_data():
             # 数据不存在，尝试下载
             logger.info("Downloading NLTK punkt tokenizer...")
             nltk.download('punkt', quiet=True, raise_on_error=True)
+            nltk.download('punkt_tab', quiet=True, raise_on_error=True)
             logger.info("Successfully downloaded NLTK punkt tokenizer")
-            return True
+            return True0
     except Exception as e:
         logger.error(f"Failed to initialize NLTK data: {str(e)}")
         logger.error("Will use basic sentence splitting as fallback")
@@ -52,6 +54,7 @@ class TranscriptChunker:
     def __init__(self, max_tokens: int = 4000):
         self.max_tokens = max_tokens
         self.tokenizer = tiktoken.get_encoding("cl100k_base")
+        self.language_detector = LanguageDetector()
         self.logger = Logger(
             name="chunker",
             console_output=True,
@@ -81,6 +84,7 @@ class TranscriptChunker:
     def extract_speaker_segments(self, text: str) -> List[str]:
         """
         Split text into segments based on speaker changes or natural breaks.
+        If no speaker markers found, split by sentences.
         """
         speaker_patterns = [
             r'^[A-Z][a-z]+:',           # Name: 
@@ -89,6 +93,20 @@ class TranscriptChunker:
         ]
         
         lines = text.split('\n')
+        logger.info(f"Lines: length {len(lines)}")    
+        
+        # 检查是否有说话人标记
+        has_speaker_markers = any(
+            any(re.match(pattern, line.strip()) for pattern in speaker_patterns)
+            for line in lines
+        )
+        
+        # 如果没有说话人标记，使用句子分割
+        if not has_speaker_markers:
+            sentences = self.split_into_sentences(text)
+            return sentences
+        
+        # 原有的按说话人分段逻辑
         segments = []
         current_segment = []
         
@@ -118,7 +136,8 @@ class TranscriptChunker:
         
         for segment in segments:
             segment_tokens = len(self.tokenizer.encode(segment))
-            
+            # self.logger.info(f"Segment tokens: {segment_tokens}")
+
             if current_token_count + segment_tokens > self.max_tokens:
                 if current_chunk:
                     chunks.append('\n'.join(current_chunk))
@@ -151,6 +170,10 @@ class TranscriptChunker:
         
         if current_chunk:
             chunks.append('\n'.join(current_chunk))
+        
+        # Check if the first chunk is empty and remove it
+        if len(chunks) > 0 and chunks[0].strip() == "":
+            chunks.pop(0)
         
         return chunks
 
@@ -199,9 +222,15 @@ class TranscriptChunker:
         """分割文本为句子"""
         if NLTK_AVAILABLE:
             try:
-                return sent_tokenize(text)
+                source_lang = self.language_detector.get_nltk_language_name(text)
+                if source_lang == 'chinese':
+                    return sent_tokenize(text)
+                else:
+                    self.logger.info(f"Splitting into sentences by NLTK for {source_lang}")
+                    return sent_tokenize(text, source_lang)
             except Exception as e:
-                self.logger.warning(f"NLTK sentence tokenization failed: {str(e)}")
+                self.logger.info(f"NLTK sentence tokenization failed: {str(e)}")
                 
         # 如果 NLTK 不可用或失败，使用基本的分割方法
-        return [s.strip() for s in re.split(r'[.!?]+', text) if s.strip()]
+        self.logger.info(f"Splitting into sentences by basic method")
+        return [s.strip() for s in re.split(r'[.!?。！？]+', text) if s.strip()]
