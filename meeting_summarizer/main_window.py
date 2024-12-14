@@ -7,7 +7,7 @@ from PyQt6.QtGui import QIcon, QFont
 from utils.MeetingRecordProject import MeetingRecordProject
 from recording_window import RecordingWidget
 from processing_window import ProcessingWidget
-from summary_view import SummaryViewWidget
+from meeting_summarizer.transcript_window import TranscriptWindow
 import os
 from history_window import HistoryWindow
 from pathlib import Path
@@ -18,69 +18,57 @@ from utils.llm_statuscheck import LLMStatusChecker
 from config.settings import Settings  # Import Settings class
 from datetime import datetime
 from utils.flexible_logger import Logger
+from summary_window import SummaryWindow
 
 class SlideStackedWidget(QStackedWidget):
     def __init__(self):
         super().__init__()
         self.setStyleSheet("background: white;")
 
-    def slide_to_next(self):
-        """向左滑动到下一个页面"""
-        current_index = self.currentIndex()
-        next_index = current_index + 1
-        if next_index < self.count():
-            self.slide_to_index(next_index)
-
-    def slide_to_prev(self):
-        """向右滑动到上一个页面"""
-        current_index = self.currentIndex()
-        prev_index = current_index - 1
-        if prev_index >= 0:
-            self.slide_to_index(prev_index)
-
-    def slide_to_index(self, index):
-        """滑动到指定索引的页面"""
-        if self.currentIndex() == index:
+    def slide_to_widget(self, next_widget):
+        """Slide to specified widget"""
+        if self.currentWidget() == next_widget:
             return
 
-        # 获口宽度
+        # Get window width
         width = self.width()
         
-        # 设置偏移方向
-        offset = width if self.currentIndex() > index else -width
+        # Set offset direction
+        current_index = self.indexOf(self.currentWidget())
+        next_index = self.indexOf(next_widget)
+        offset = width if current_index > next_index else -width
         
-        # 准备当前页面和目标页面
+        # Prepare current and next widgets
         current_widget = self.currentWidget()
-        self.setCurrentIndex(index)
-        next_widget = self.currentWidget()
+        self.setCurrentWidget(next_widget)
         
-        # 设置初始位置
+        # Set initial positions
         next_widget.setGeometry(0, 0, width, self.height())
         current_widget.move(0, 0)
         next_widget.move(-offset, 0)
         
-        # 创建动画
+        # Create animation group
         anim_group = QParallelAnimationGroup()
         
-        # 当前页面动画
+        # Current widget animation
         anim_current = QPropertyAnimation(current_widget, b"pos")
         anim_current.setDuration(300)
         anim_current.setStartValue(QPoint(0, 0))
         anim_current.setEndValue(QPoint(offset, 0))
         anim_current.setEasingCurve(QEasingCurve.Type.OutCubic)
         
-        # 下一页面动画
+        # Next widget animation
         anim_next = QPropertyAnimation(next_widget, b"pos")
         anim_next.setDuration(300)
         anim_next.setStartValue(QPoint(-offset, 0))
         anim_next.setEndValue(QPoint(0, 0))
         anim_next.setEasingCurve(QEasingCurve.Type.OutCubic)
         
-        # 添加动画到组
+        # Add animations to group
         anim_group.addAnimation(anim_current)
         anim_group.addAnimation(anim_next)
         
-        # 开始动画
+        # Start animation
         anim_group.start()
 
 class MainWindow(QMainWindow):
@@ -89,37 +77,39 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("会议总结助手")
         self.resize(800, 600)
         
-        # 初始化项目管理器
+        # Initialize project manager
         self.project_manager = MeetingRecordProject("default_project")
         
-        # 创建中央部件
+        # Create central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
 
-        # 创建堆叠窗口部件
+        # Create stacked widget
         self.stacked_widget = SlideStackedWidget()
         main_layout.addWidget(self.stacked_widget)
 
-        # 创建主页面
+        # Create main page
         self.main_page = self.create_main_page()
         
-        # 创建各个功能页面
+        # Create functional pages
         self.recording_widget = RecordingWidget()
         self.processing_widget = ProcessingWidget()
-        self.summary_widget = SummaryViewWidget()
+        self.transcript_widget = TranscriptWindow()
+        self.summary_widget = SummaryWindow()
         
-        # 添加页面到堆叠窗口
-        self.stacked_widget.addWidget(self.main_page)        # 主页面
-        self.stacked_widget.addWidget(self.recording_widget) # 录音页面
-        self.stacked_widget.addWidget(self.processing_widget) # 处理页面
-        self.stacked_widget.addWidget(self.summary_widget)   # 总结页面
+        # Add pages to stacked widget
+        self.stacked_widget.addWidget(self.main_page)
+        self.stacked_widget.addWidget(self.recording_widget)
+        self.stacked_widget.addWidget(self.processing_widget)
+        self.stacked_widget.addWidget(self.transcript_widget)
+        self.stacked_widget.addWidget(self.summary_widget)
 
-        # 确保显示主页面
+        # Ensure main page is shown
         self.stacked_widget.setCurrentWidget(self.main_page)
 
-        # 检查 LLM 状态并显示
+        # Check LLM status and display
         self.check_llm_status()
 
     def closeEvent(self, event):
@@ -277,9 +267,9 @@ class MainWindow(QMainWindow):
                 target_file = os.path.join(self.project_manager.transcript_dir, os.path.basename(file_name)) 
                 shutil.copy2(file_name, target_file)
                 self.project_manager.add_transcript(target_file)
-                self.summary_widget.set_project_manager(self.project_manager)  # 使用 set_project_manager 方法
+                self.transcript_widget.set_project_manager(self.project_manager)  # 使用 set_project_manager 方法
                 print(f"文本文件已复制到: {target_file}")
-                self.summary_widget.load_content()  # 加载内容
+                self.transcript_widget.load_content()  # 加载内容
                 
                 # 启动总结页面
                 self.show_summary_page()
@@ -289,21 +279,21 @@ class MainWindow(QMainWindow):
             print("未选择文件")
 
     def show_recording_page(self):
-        """显示录音页面"""
-        self.stacked_widget.slide_to_index(1)  # 切换到录音页面
+        """Show recording page"""
+        self.stacked_widget.setCurrentWidget(self.recording_widget)
 
     def show_main_page(self):
-        """返回主页面"""
-        self.stacked_widget.slide_to_index(0)  # 切换到主页面
+        """Return to main page"""
+        self.stacked_widget.setCurrentWidget(self.main_page)
 
     def show_processing_page(self):
-        """显示处理页面"""
-        self.stacked_widget.slide_to_index(2)  # 切换到处理页面
+        """Show processing page"""
+        self.stacked_widget.setCurrentWidget(self.processing_widget)
         self.processing_widget.start_processing()
 
     def show_summary_page(self):
-        """切换到会议纪要预览页面"""
-        self.stacked_widget.slide_to_index(3)  # 切换到总结页面
+        """Show summary page"""
+        self.stacked_widget.setCurrentWidget(self.transcript_widget)
 
     def show_history_page(self):
         """显示历史记录页面"""
@@ -322,8 +312,8 @@ class MainWindow(QMainWindow):
                     self.show_processing_page()
                 elif selected_action == HistoryWindow.ACTION_EDIT_SUMMARY:
                     # 用户选择编辑总结
-                    self.summary_widget.project_manager = selected_project
-                    self.summary_widget.load_content()  # 加载内容
+                    self.transcript_widget.project_manager = selected_project
+                    self.transcript_widget.load_content()  # 加载内容
                     self.show_summary_page()
         else:
             # 用户取消或关闭窗口，直接返回主页面
@@ -361,7 +351,7 @@ class MainWindow(QMainWindow):
         subtitle_label.setStyleSheet("color: #666666;")
         button_layout.addWidget(subtitle_label)
 
-        # 设置按钮样式
+        # 置按钮样式
         button.setStyleSheet("""
             QPushButton {
                 background-color: white;
@@ -397,24 +387,24 @@ class MainWindow(QMainWindow):
         self.llm_status_label.setText(f"LLM 服务状态: {status}")
         self.llm_status_label.setStyleSheet(f"color: {color}; font-size: 14px;")
 
-    def switch_to_summary_view(self):
-        """切换到总结视图"""
+    def switch_to_transcript_view(self):
+        """Switch to transcript view"""
         try:
-            print("\n=== 切换到总结视图 ===")
-            # 确保 project_manager 已经设置
+            print("\n=== Switching to transcript view ===")
+            # Ensure project_manager is set
             if hasattr(self.processing_widget, 'project_manager') and self.processing_widget.project_manager:
-                # 设置 summary_view 的 project_manager
-                self.summary_widget.set_project_manager(self.processing_widget.project_manager)
-                # 加载内容
-                self.summary_widget.load_content()
-                # 切换页面
-                self.stacked_widget.setCurrentWidget(self.summary_widget)
-                print(f"已切换到总结视图，使用项目: {self.processing_widget.project_manager.project_name}")
+                # Set transcript_widget's project_manager
+                self.transcript_widget.set_project_manager(self.processing_widget.project_manager)
+                # Load content
+                self.transcript_widget.load_content()
+                # Switch to transcript page using widget reference
+                self.stacked_widget.setCurrentWidget(self.transcript_widget)
+                print(f"Switched to transcript view, using project: {self.processing_widget.project_manager.project_name}")
             else:
-                print("错误：处理页面的项目管理器未设置")
+                print("Error: Processing widget's project manager not set")
                 
         except Exception as e:
-            print(f"切换到总结视图时发生错误: {str(e)}")
+            print(f"Error switching to transcript view: {str(e)}")
             import traceback
             traceback.print_exc()
 
