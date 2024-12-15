@@ -223,14 +223,16 @@ class TranscriptChunker:
         if NLTK_AVAILABLE:
             try:
                 source_lang = self.language_detector.get_nltk_language_name(text)
-                if source_lang == 'chinese':
-                    return sent_tokenize(text)
+                # 直接使用 language_detector 中的 nltk_lang_mapping
+                if source_lang in self.language_detector.nltk_lang_mapping.values():
+                    self.logger.info(f"Using NLTK sentence tokenizer for {source_lang}")
+                    return sent_tokenize(text, language=source_lang)
                 else:
-                    self.logger.info(f"Splitting into sentences by NLTK for {source_lang}")
-                    return sent_tokenize(text, source_lang)
+                    self.logger.info(f"Language {source_lang} not supported by NLTK, using basic split")
+                    
             except Exception as e:
-                self.logger.info(f"NLTK sentence tokenization failed: {str(e)}")
+                self.logger.warning(f"NLTK sentence tokenization failed: {str(e)}")
                 
         # 如果 NLTK 不可用或失败，使用基本的分割方法
-        self.logger.info(f"Splitting into sentences by basic method")
+        self.logger.info("Using basic sentence splitting")
         return [s.strip() for s in re.split(r'[.!?。！？]+', text) if s.strip()]

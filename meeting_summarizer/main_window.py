@@ -14,9 +14,6 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog
 import shutil
-from utils.llm_statuscheck import LLMStatusChecker
-from config.settings import Settings  # Import Settings class
-from datetime import datetime
 from utils.flexible_logger import Logger
 from summary_window import SummaryWindow
 
@@ -108,9 +105,6 @@ class MainWindow(QMainWindow):
 
         # Ensure main page is shown
         self.stacked_widget.setCurrentWidget(self.main_page)
-
-        # Check LLM status and display
-        self.check_llm_status()
 
     def closeEvent(self, event):
         """处理窗口关闭事件"""
@@ -208,11 +202,6 @@ class MainWindow(QMainWindow):
 
         # 添加底部空间
         layout.addStretch()
-
-        # LLM 状态标签
-        self.llm_status_label = QLabel("LLM 服务状态: ")
-        self.llm_status_label.setStyleSheet("color: black; font-size: 14px;")
-        layout.addWidget(self.llm_status_label)
 
         return main_page
 
@@ -346,7 +335,7 @@ class MainWindow(QMainWindow):
 
         button_layout.addLayout(header_layout)
 
-        # 添加副标题
+        # 添加副标���
         subtitle_label = QLabel(subtitle)
         subtitle_label.setStyleSheet("color: #666666;")
         button_layout.addWidget(subtitle_label)
@@ -366,26 +355,6 @@ class MainWindow(QMainWindow):
         """)
 
         return button
-
-    def check_llm_status(self):
-        """检查 LLM 服务状态并显示"""
-        settings = Settings()  # 获取设置实例
-        llm_config = settings._settings["llm"]  # 获取 LLM 配置
-        checker = LLMStatusChecker(llm_config["api_url"])  # 使用配置中的 URL
-        status = checker.check_status()
-        self.display_llm_status(status)
-
-    def display_llm_status(self, status):
-        """在主页面底部显示 LLM 状态"""
-        if status == "ready":
-            color = "green"
-        elif status == "offline":
-            color = "darkred"
-        else:
-            color = "black"  # 默认颜色
-        
-        self.llm_status_label.setText(f"LLM 服务状态: {status}")
-        self.llm_status_label.setStyleSheet(f"color: {color}; font-size: 14px;")
 
     def switch_to_transcript_view(self):
         """Switch to transcript view"""

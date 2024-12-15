@@ -16,28 +16,56 @@ class TextProofreader:
             file_output=True,
             log_level="INFO"
         )
-        self.chunker = TranscriptChunker(max_tokens=200)
+        self.chunker = TranscriptChunker(max_tokens=2000)
         self.language_detector = LanguageDetector()
+        self._stop_flag = False  # 添加停止标志
         self.logger.info("TextProofreader initialized")
     
-    def proofread_text(self, text: str) -> Dict[str, str]:
+    def stop(self):
+        """设置停止标志"""
+        self._stop_flag = True
+        
+    def reset(self):
+        """重置停止标志"""
+        self._stop_flag = False
+    
+    def proofread_text(self, text: str, progress_callback=None) -> Dict[str, str]:
         """
         使用LLM模型校对输入文本
+        
+        Args:
+            text: 要校对的文本
+            progress_callback: 进度回调函数，接收两个参数：进度百分比(int)和状态文本(str)
         """
         try:
+            self.reset()  # 重置停止标志
             source_lang = self.language_detector.detect_language(text)
             self.logger.info(f"Source text language detected: {source_lang}")
             
             chunks = self.chunker.chunk_transcript(text)
-            self.logger.info(f"Text split into {len(chunks)} chunks for proofreading")
+            total_chunks = len(chunks)
+            self.logger.info(f"Text split into {total_chunks} chunks for proofreading")
             
             proofread_chunks = []
             all_changes = []
             retry_count = 3
             
             for i, chunk in enumerate(chunks, 1):
-                self.logger.info(f"Processing chunk {i}/{len(chunks)}")
+                # 检查是否需要停止
+                if self._stop_flag:
+                    self.logger.info("Proofreading stopped by user")
+                    raise Exception("操作已被用户取消")
+                
+                # 更新进度
+                if progress_callback:
+                    progress = int((i - 1) / total_chunks * 100)
+                    progress_callback(progress, f"正在处理第 {i}/{total_chunks} 段")
+                
+                self.logger.info(f"Processing chunk {i}/{total_chunks}")
                 self.logger.info(f"Original chunk {i} length: {len(chunk)}")
+                
+                # 增加一个处理，将chunk中的换行符替换为空格，使其为一段话。
+                chunk = chunk.replace('\n', ' ')
                 
                 prompt = f"""
 【Expert Knowledge Domain and Keyword Precise Extraction】
@@ -49,14 +77,17 @@ class TextProofreader:
 【Text to Analyze】
 {chunk}
 """
-                # self.logger.info(f"Prompt for chunk {i}: {prompt}")
                 for attempt in range(retry_count):
+                    # 再次检查是否需要停止
+                    if self._stop_flag:
+                        self.logger.info("Proofreading stopped by user")
+                        raise Exception("操作已被用户取消")
+                        
                     try:
-                        # 使用 LLMProvider 的 generate 方法
                         response = self.llm.generate(
                             prompt,
-                            temperature=0,  # 降低随机性
-                            max_tokens=4000   # 设置最大token数
+                            temperature=0,
+                            max_tokens=4000
                         )
                         
                         if not response:
@@ -64,14 +95,12 @@ class TextProofreader:
                         
                         self.logger.info(f"Proofread chunk {i}: {response}")
                         proofread_chunk = response
-                        # proofread_chunk, changes = self._parse_proofreading_response(response)
                         
                         if not proofread_chunk.strip():
                             raise Exception("Empty proofread text")
                         
                         self.logger.info(f"Successfully proofread chunk {i}")
                         proofread_chunks.append(proofread_chunk)
-                        # all_changes.extend(changes)
                         break
                         
                     except Exception as e:
@@ -79,7 +108,10 @@ class TextProofreader:
                         if attempt == retry_count - 1:
                             self.logger.error(f"Failed to process chunk {i} after {retry_count} attempts")
                             proofread_chunks.append(chunk)
-                            # all_changes.append(f"[Error processing chunk {i}: {str(e)}]")
+            
+            # 完成��理
+            if progress_callback:
+                progress_callback(100, "校对完成")
             
             final_proofread_text = '\n'.join(proofread_chunks)
             
