@@ -188,25 +188,25 @@ class ProcessingWidget(QWidget):
             self.time_label.setText("即将完成...")
     
     def processing_finished(self, success, result):
-        """处理完成后的回调"""
+        """Processing completion callback"""
         if success:
             self.status_label.setText("处理完成")
-            self.time_label.setText("正在跳转到总结页面...")
+            self.time_label.setText("正在跳转到转写页面...")
             
             try:
-                # 获取主窗口
+                # Get main window
                 main_window = self.window()
-                if hasattr(main_window, 'switch_to_summary_view'):
-                    # 调用主窗口的切换方法
-                    main_window.switch_to_summary_view()
-                    print("已请求切换到总结页面")
+                if hasattr(main_window, 'switch_to_transcript_view'):
+                    # Call main window's switch method
+                    main_window.switch_to_transcript_view()
+                    print("Requested switch to transcript view")
                 else:
-                    error_msg = "主窗口缺少切换页面的方法"
+                    error_msg = "Main window missing page switch method"
                     print(error_msg)
                     self.status_label.setText(error_msg)
                     
             except Exception as e:
-                error_msg = f"切换页面时发生错误: {str(e)}"
+                error_msg = f"Error switching pages: {str(e)}"
                 print(error_msg)
                 self.status_label.setText(error_msg)
                 traceback.print_exc()

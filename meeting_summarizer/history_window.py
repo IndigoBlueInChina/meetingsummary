@@ -2,6 +2,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QListWidget,
                             QLabel, QPushButton, QSplitter, QTextEdit, QListWidgetItem,
                             QMessageBox, QWidget, QScrollArea)
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
 from utils.MeetingRecordProject import MeetingRecordProject
 import os
 from datetime import datetime
@@ -30,13 +31,23 @@ class HistoryWindow(QDialog):
     def setup_ui(self):
         """设置界面"""
         main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(20)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 标题
+        title = QLabel("历史记录")
+        title.setFont(QFont("Arial", 24, QFont.Weight.Bold))
+        main_layout.addWidget(title)
         
         # 创建分割器
         splitter = QSplitter(Qt.Orientation.Horizontal)
         
         # 左侧项目列表面板
         left_panel = QWidget()
+        left_panel.setFixedWidth(250)
         left_layout = QVBoxLayout(left_panel)
+        left_layout.setAlignment(Qt.AlignmentFlag.AlignTop)  # 设置顶对齐
+        left_layout.setContentsMargins(0, 0, 0, 0)  # 移除内边距
         
         # 项目列表标题
         list_title = QLabel("项目列表")
@@ -45,52 +56,129 @@ class HistoryWindow(QDialog):
         
         # 项目列表
         self.project_list = QListWidget()
+        self.project_list.setStyleSheet("""
+            QListWidget {
+                border: 1px solid #CCCCCC;
+                border-radius: 5px;
+                padding: 5px;
+                background-color: white;
+            }
+            QListWidget::item {
+                padding: 10px;
+                border-bottom: 1px solid #EEEEEE;
+            }
+            QListWidget::item:selected {
+                background-color: #33CCFF;
+                color: white;
+            }
+            QListWidget::item:hover {
+                background-color: #F0F0F0;
+            }
+        """)
         self.project_list.currentItemChanged.connect(self.on_project_selected)
         left_layout.addWidget(self.project_list)
         
         # 右侧内容显示面板
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
+        right_layout.setAlignment(Qt.AlignmentFlag.AlignTop)  # 设置顶对齐
+        right_layout.setContentsMargins(20, 0, 0, 0)
         
-        # 项目详情区域
+        # 内容显示区域
+        content_container = QWidget()
+        content_layout = QVBoxLayout(content_container)
+        content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)  # 设置顶对齐
+        content_layout.setSpacing(10)
+        content_layout.setContentsMargins(0, 0, 0, 0)  # 移除内边距
+        
         self.project_title = QLabel()
-        self.project_title.setStyleSheet("font-size: 18px; font-weight: bold;")
-        right_layout.addWidget(self.project_title)
-        
-        # 内容显示区域（使用滚动区域）
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        content_widget = QWidget()
-        self.content_layout = QVBoxLayout(content_widget)
+        self.project_title.setFont(QFont("Arial", 16))
+        self.project_title.setStyleSheet("color: #333333;")
         
         self.summary_label = QLabel("会议总结")
-        self.summary_label.setStyleSheet("font-size: 14px; font-weight: bold;")
-        self.content_layout.addWidget(self.summary_label)
+        self.summary_label.setFont(QFont("Arial", 12))
+        self.summary_label.setStyleSheet("color: #666666;")
         
         self.content_display = QTextEdit()
         self.content_display.setReadOnly(True)
-        self.content_layout.addWidget(self.content_display)
+        self.content_display.setStyleSheet("""
+            QTextEdit {
+                border: 1px solid #CCCCCC;
+                border-radius: 5px;
+                padding: 10px;
+                background-color: white;
+            }
+        """)
         
+        # 文件信息显示
         self.file_info = QLabel()
-        self.content_layout.addWidget(self.file_info)
+        self.file_info.setStyleSheet("""
+            QLabel {
+                color: #666666;
+                font-size: 12px;
+                padding: 10px;
+                background-color: #F5F5F5;
+                border-radius: 5px;
+            }
+        """)
         
-        scroll_area.setWidget(content_widget)
-        right_layout.addWidget(scroll_area)
+        content_layout.addWidget(self.project_title)
+        content_layout.addWidget(self.summary_label)
+        content_layout.addWidget(self.content_display)
+        content_layout.addWidget(self.file_info)
+        
+        right_layout.addWidget(content_container)
         
         # 添加面板到分割器
         splitter.addWidget(left_panel)
         splitter.addWidget(right_panel)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 2)
         
         main_layout.addWidget(splitter)
         
         # 底部按钮区域
         button_layout = QHBoxLayout()
         
-        self.transcribe_btn = QPushButton("音频转文字")
-        self.edit_summary_btn = QPushButton("编辑会议总结")
+        # 主要按钮样式（蓝色）
+        main_button_style = """
+            QPushButton {
+                background-color: #33CCFF;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                padding: 15px 30px;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #2CB5E8;
+            }
+            QPushButton:disabled {
+                background-color: #CCCCCC;
+            }
+        """
+        
+        # 次要按钮样式（灰色）
+        secondary_button_style = """
+            QPushButton {
+                background-color: #E0E0E0;
+                color: #333333;
+                border: none;
+                border-radius: 5px;
+                padding: 15px 30px;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #CCCCCC;
+            }
+        """
+        
+        self.transcribe_btn = QPushButton("转写")
+        self.transcribe_btn.setStyleSheet(main_button_style)
+        
+        self.edit_summary_btn = QPushButton("编辑总结")
+        self.edit_summary_btn.setStyleSheet(main_button_style)
+        
         self.close_btn = QPushButton("关闭")
+        self.close_btn.setStyleSheet(secondary_button_style)  # 使用次要按钮样式
         
         self.transcribe_btn.clicked.connect(self.on_transcribe)
         self.edit_summary_btn.clicked.connect(self.on_edit_summary)
@@ -103,7 +191,7 @@ class HistoryWindow(QDialog):
         
         main_layout.addLayout(button_layout)
         
-        # 初始时禁用功���按钮
+        # 初始时禁用功能按钮
         self.transcribe_btn.setEnabled(False)
         self.edit_summary_btn.setEnabled(False)
 

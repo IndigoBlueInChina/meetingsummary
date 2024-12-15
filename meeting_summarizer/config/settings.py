@@ -33,8 +33,13 @@ class Settings:
                 "last_project": None,  # 上次打开的项目路径
             },
             "llm": {
+                "provider": "ollama",  # 默认提供者
                 "model_name": "qwen2.5",
-                "api_url": "http://localhost:11434"
+                "api_url": "http://localhost:11434",
+                "openai_model": "gpt-3.5-turbo",
+                "openai_api_key": "",  # OpenAI API密钥
+                "deepseek_model": "deepseek-chat",
+                "deepseek_api_key": "",  # Deepseek API密钥
             },
         }
         

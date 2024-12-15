@@ -1,5 +1,4 @@
 import os
-import logging
 import traceback
 import sys
 from funasr import AutoModel
@@ -7,7 +6,9 @@ import torch
 import numpy as np
 import soundfile as sf
 from pydub import AudioSegment
-
+from funasr.utils.postprocess_utils import rich_transcription_postprocess
+from utils.flexible_logger import Logger
+from utils.language_detector import LanguageDetector
 
 ### this is example code for other functions call
 ### 转写文件
@@ -24,7 +25,12 @@ from pydub import AudioSegment
 
 class SenseVoiceTranscriber:
     def __init__(self, model_id="iic/SenseVoiceSmall"):
-        self.logger = logging.getLogger(__name__)
+        self.logger = Logger(
+            name="transcriber",
+            console_output=True,
+            file_output=True,
+            log_level="INFO"
+        )
         
         try:
             self.logger.info("Creating ASR model...")
@@ -45,6 +51,10 @@ class SenseVoiceTranscriber:
                     "device": device  # 标点模型也需要设备参数
                 }
             )
+            
+            # 初始化语言检测器
+            self.language_detector = LanguageDetector()
+            
             self.logger.info(f"Model loaded successfully on {device}")
         except Exception as e:
             self.logger.error(f"Error during model initialization: {str(e)}")
@@ -88,15 +98,29 @@ class SenseVoiceTranscriber:
             traceback.print_exc()
             raise
 
-    def clean_transcript(self, text):
-        """清理转写文本中的标记"""
-        import re
-        # 移除语言标记和时间戳
-        text = re.sub(r'<\[zh\|.*?\]>', '', text)
-        text = re.sub(r'<\[.*?\]>', '', text)
-        # 移除多余的空白
-        text = re.sub(r'\s+', ' ', text)
-        return text.strip()
+    def clean_transcript(self, text: str) -> str:
+        """
+        清理转写文本，包括标点符号处理
+        
+        Args:
+            text: 输入文本
+        Returns:
+            str: 处理后的文本
+        """
+        # 首先使用原有的后处理
+        text = rich_transcription_postprocess(text)
+        
+        try:
+            # 检测语言
+            lang_code = self.language_detector.get_language_code(text)
+            self.logger.info(f"Detected language code: {lang_code}")
+            
+        except Exception as e:
+            self.logger.warning(f"Language detection or preprocessing failed: {str(e)}")
+        
+        return text
+    
+
 
     def transcribe_file(self, audio_path):
         """转写整个音频文件"""
@@ -108,11 +132,11 @@ class SenseVoiceTranscriber:
             self.logger.info(f"Transcribing audio file: {audio_path}")
             results = self.model.generate(
                 input=audio_data,
-                batch_size_s=300,     # 每批处理300秒
+                batch_size_s=100,     # 每批处理300秒
                 hotword=None,         # 可选的热词列表
                 language='auto',      # 自动检测语言
                 signal_type='linear', # 线性信号
-                use_itn=True,        # 使用反标准化
+                use_itn= False,        # 使用反标准化, make sure export text without some flags, like <s> </s>
                 mode='offline'       # 离线模式
             )
 

@@ -465,6 +465,10 @@ class RecordingWidget(QWidget):
                 # 切换到处理页面
                 main_window.show_processing_page()  # 切换到处理页面
                 print(f"已切换到处理页面，使用项目: {self.project_manager.project_name}")
+                
+                # 启动转写处理
+                QTimer.singleShot(500, main_window.processing_widget.start_processing)
+                print("已安排启动转写处理")
             else:
                 print("错误：未找到主窗口或 project_manager 未初始化")
         

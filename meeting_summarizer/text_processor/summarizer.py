@@ -4,7 +4,7 @@ from typing import Optional, Dict, List, Any
 import json
 import re
 from pathlib import Path
-from .chunker import TranscriptChunker
+from utils.chunker import TranscriptChunker
 from meeting_summarizer.utils.llm_factory import LLMFactory
 from meeting_summarizer.config.settings import Settings
 

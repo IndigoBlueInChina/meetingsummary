@@ -1,8 +1,9 @@
 from typing import Optional, Dict, Any
 import requests
 import json
-import logging
 from abc import ABC, abstractmethod
+from config.settings import Settings
+from utils.flexible_logger import Logger
 
 class LLMProvider(ABC):
     @abstractmethod
@@ -10,10 +11,12 @@ class LLMProvider(ABC):
         pass
 
 class OllamaProvider(LLMProvider):
-    def __init__(self, model_name: str = "qwen2.5", api_url: str = "http://localhost:11434"):
-        self.model_name = model_name
-        self.api_url = api_url
-        self.logger = logging.getLogger(__name__)
+    def __init__(self):
+        settings = Settings()
+        llm_config = settings.get_all()["llm"]
+        self.model_name = llm_config["model_name"]
+        self.api_url = llm_config["api_url"]
+        self.logger = Logger(__name__)
 
     def generate(self, prompt: str, **kwargs) -> Optional[str]:
         try:
@@ -34,9 +37,11 @@ class OllamaProvider(LLMProvider):
             return None
 
 class VLLMProvider(LLMProvider):
-    def __init__(self, api_url: str = "http://localhost:8000"):
-        self.api_url = api_url
-        self.logger = logging.getLogger(__name__)
+    def __init__(self):
+        settings = Settings()
+        llm_config = settings.get_all()["llm"]
+        self.api_url = llm_config["api_url"]
+        self.logger = Logger(__name__)
 
     def generate(self, prompt: str, **kwargs) -> Optional[str]:
         try:
@@ -58,9 +63,12 @@ class VLLMProvider(LLMProvider):
 
 class DeepseekProvider(LLMProvider):
     def __init__(self, api_key: str):
+        settings = Settings()
+        llm_config = settings.get_all()["llm"]
         self.api_key = api_key
         self.api_url = "https://api.deepseek.com/v1/chat/completions"
-        self.logger = logging.getLogger(__name__)
+        self.model_name = llm_config.get("deepseek_model", "deepseek-chat")
+        self.logger = Logger(__name__)
 
     def generate(self, prompt: str, **kwargs) -> Optional[str]:
         try:
@@ -68,7 +76,7 @@ class DeepseekProvider(LLMProvider):
                 self.api_url,
                 headers={"Authorization": f"Bearer {self.api_key}"},
                 json={
-                    "model": kwargs.get("model", "deepseek-chat"),
+                    "model": kwargs.get("model", self.model_name),
                     "messages": [{"role": "user", "content": prompt}],
                     **kwargs
                 },
@@ -82,9 +90,12 @@ class DeepseekProvider(LLMProvider):
 
 class OpenAIProvider(LLMProvider):
     def __init__(self, api_key: str):
+        settings = Settings()
+        llm_config = settings.get_all()["llm"]
         self.api_key = api_key
         self.api_url = "https://api.openai.com/v1/chat/completions"
-        self.logger = logging.getLogger(__name__)
+        self.model_name = llm_config.get("openai_model", "gpt-3.5-turbo")
+        self.logger = Logger(__name__)
 
     def generate(self, prompt: str, **kwargs) -> Optional[str]:
         try:
@@ -92,7 +103,7 @@ class OpenAIProvider(LLMProvider):
                 self.api_url,
                 headers={"Authorization": f"Bearer {self.api_key}"},
                 json={
-                    "model": kwargs.get("model", "gpt-3.5-turbo"),
+                    "model": kwargs.get("model", self.model_name),
                     "messages": [{"role": "user", "content": prompt}],
                     **kwargs
                 },
@@ -117,4 +128,26 @@ class LLMFactory:
         if provider_type not in providers:
             raise ValueError(f"Unsupported provider type: {provider_type}")
             
-        return providers[provider_type](**kwargs) 
+        return providers[provider_type](**kwargs)
+
+    @staticmethod
+    def get_default_provider() -> LLMProvider:
+        """获取默认的LLM提供者实例"""
+        try:
+            settings = Settings()
+            llm_config = settings.get_all()["llm"]
+            provider_type = llm_config.get("provider", "ollama")  # 从配置获取提供者类型，默认为ollama
+            
+            # 根据提供者类型创建实例
+            if provider_type in ["deepseek", "openai"]:
+                api_key = llm_config.get(f"{provider_type}_api_key")
+                if not api_key:
+                    raise ValueError(f"Missing API key for {provider_type}")
+                return LLMFactory.create_provider(provider_type, api_key=api_key)
+            else:
+                return LLMFactory.create_provider(provider_type)
+                
+        except Exception as e:
+            logging.error(f"Failed to create LLM provider: {str(e)}")
+            # 如果出错，返回默认的Ollama提供者
+            return OllamaProvider() 
