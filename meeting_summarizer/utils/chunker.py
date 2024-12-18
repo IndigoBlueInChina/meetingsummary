@@ -31,17 +31,18 @@ def ensure_nltk_data():
     """确保 NLTK 数据可用"""
     try:
         # 检查数据是否已存在
+        logger.info("Attempting to find NLTK punkt tokenizer...")
         try:
             nltk.data.find('tokenizers/punkt')
             logger.info("NLTK punkt tokenizer found")
             return True
         except LookupError:
-            # 数据不存在，尝试下载
+            logger.warning("NLTK punkt tokenizer not found, attempting to download...")
             logger.info("Downloading NLTK punkt tokenizer...")
             nltk.download('punkt', quiet=True, raise_on_error=True)
             nltk.download('punkt_tab', quiet=True, raise_on_error=True)
             logger.info("Successfully downloaded NLTK punkt tokenizer")
-            return True0
+            return True
     except Exception as e:
         logger.error(f"Failed to initialize NLTK data: {str(e)}")
         logger.error("Will use basic sentence splitting as fallback")
@@ -62,6 +63,7 @@ class TranscriptChunker:
             log_level="INFO"
         )
         self.logger.info(f"TranscriptChunker initialized with max_tokens={max_tokens}")
+        logger.info("TranscriptChunker instance created.")
 
     def detect_format(self, text: str) -> str:
         """
@@ -129,6 +131,8 @@ class TranscriptChunker:
         Create chunks based on content when no timestamps are available.
         Uses a combination of speaker changes and semantic breaks.
         """
+        logger.info("Starting chunking process...")
+        logger.info(f"Creating content-based chunks with size={chunk_size}...")
         segments = self.extract_speaker_segments(text)
         chunks = []
         current_chunk = []
@@ -175,12 +179,14 @@ class TranscriptChunker:
         if len(chunks) > 0 and chunks[0].strip() == "":
             chunks.pop(0)
         
+        logger.info("Finished creating content-based chunks.")
         return chunks
 
     def create_timestamped_chunks(self, text: str) -> List[str]:
         """
         Create chunks based on timestamps while preserving time context.
         """
+        logger.info("Creating timestamped chunks...")
         timestamp_pattern = r'\[\d{2}:\d{2}:\d{2}\]|\d{2}:\d{2}:\d{2}|\(\d{2}:\d{2}\)'
         segments = re.split(f'(?={timestamp_pattern})', text)
         
@@ -203,6 +209,7 @@ class TranscriptChunker:
         if current_chunk:
             chunks.append(''.join(current_chunk))
         
+        logger.info("Finished creating timestamped chunks.")
         return chunks
 
     def chunk_transcript(self, text: str) -> List[str]:
@@ -235,4 +242,6 @@ class TranscriptChunker:
                 
         # 如果 NLTK 不可用或失败，使用基本的分割方法
         self.logger.info("Using basic sentence splitting")
-        return [s.strip() for s in re.split(r'[.!?。！？]+', text) if s.strip()]
+        # 使用 positive lookbehind 来保留标点符号
+        sentences = re.split(r'(?<=[.!?。！？])\s+', text)
+        return [s.strip() for s in sentences if s.strip()]

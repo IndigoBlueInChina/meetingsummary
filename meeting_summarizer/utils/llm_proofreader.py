@@ -18,8 +18,31 @@ class TextProofreader:
         )
         self.chunker = TranscriptChunker(max_tokens=2000)
         self.language_detector = LanguageDetector()
-        self._stop_flag = False  # 添加停止标志
+        self._stop_flag = False
+        self._topic = ""
+        self._keywords = ""
         self.logger.info("TextProofreader initialized")
+    
+    @property
+    def topic(self):
+        """获取主题"""
+        return self._topic if hasattr(self, '_topic') else ""
+    
+    @property
+    def keywords(self):
+        """获取关键字"""
+        return self._keywords if hasattr(self, '_keywords') else ""
+    
+    def set_context(self, topic: str = "", keywords: str = ""):
+        """设置处理上下文"""
+        try:
+            self._topic = topic.strip()
+            self._keywords = keywords.strip()
+            self.logger.info(f"Context set - Topic: {self._topic}, Keywords: {self._keywords}")
+        except Exception as e:
+            self.logger.error(f"Error setting context: {str(e)}")
+            self._topic = ""
+            self._keywords = ""
     
     def stop(self):
         """设置停止标志"""
@@ -29,6 +52,26 @@ class TextProofreader:
         """重置停止标志"""
         self._stop_flag = False
     
+    def expand_keywords(self) -> List[str]:
+        """
+        Expand the keyword set based on the topic and existing keywords.
+        
+        :return: Expanded list of keywords
+        """
+        expanded_keywords = set(self._keywords.split(", "))  # Start with existing keywords
+        if self._topic:
+            # Here you can implement logic to generate additional keywords based on the topic
+            # For example, you could use the LLM to generate related keywords
+            prompt = f"Generate more keywords with comma-separated list and related to the topic: {self._topic} and the keywords: {self._keywords}"
+            try:
+                response = self.llm.generate(prompt)
+                additional_keywords = response.split(", ")  # Assuming the response is a comma-separated list
+                expanded_keywords.update(additional_keywords)
+            except Exception as e:
+                self.logger.error(f"Error generating additional keywords: {str(e)}")
+        
+        return list(expanded_keywords)
+
     def proofread_text(self, text: str, progress_callback=None) -> Dict[str, str]:
         """
         使用LLM模型校对输入文本
@@ -41,6 +84,10 @@ class TextProofreader:
             self.reset()  # 重置停止标志
             source_lang = self.language_detector.detect_language(text)
             self.logger.info(f"Source text language detected: {source_lang}")
+            
+            # Expand keywords before proofreading
+            expanded_keywords = self.expand_keywords()
+            self.logger.info(f"Expanded keywords: {expanded_keywords}")
             
             chunks = self.chunker.chunk_transcript(text)
             total_chunks = len(chunks)
@@ -67,16 +114,27 @@ class TextProofreader:
                 # 增加一个处理，将chunk中的换行符替换为空格，使其为一段话。
                 chunk = chunk.replace('\n', ' ')
                 
-                prompt = f"""
-【Expert Knowledge Domain and Keyword Precise Extraction】
-
-【Requirements】
-- Language: {source_lang}
-- 仅仅修改错别字，不要修改语法，不要修改句子结构，不要做任何其他的修改，直接返回修改后的文本。
-
-【Text to Analyze】
-{chunk}
-"""
+                # 构建提示模板
+                prompt_parts = ["【Requirements】"]
+                
+                # 安全地添加主题和关键字
+                if getattr(self, '_topic', '').strip():
+                    prompt_parts.insert(0, f"【Topic】\n{self._topic}")
+                
+                if expanded_keywords:
+                    prompt_parts.insert(1, f"【Keywords】\n Please refer these keywords to correct the text: {', '.join(expanded_keywords)}")
+                
+                # 添加基本要求
+                prompt_parts.extend([
+                    f"- Language: {source_lang}",
+                    "- 仅仅修改错别字和标点符号，不要修改语法，不要修改句子结构，不要做任何其他的修改，直接返回修改后的文本。",
+                    "",
+                    "【Text to Analyze】",
+                    chunk
+                ])
+                
+                prompt = "\n".join(prompt_parts)
+                
                 for attempt in range(retry_count):
                     # 再次检查是否需要停止
                     if self._stop_flag:
@@ -90,7 +148,7 @@ class TextProofreader:
                             max_tokens=4000
                         )
                         
-                        if not response:
+                        if not response or not response.strip():
                             raise Exception("Empty response from LLM")
                         
                         self.logger.info(f"Proofread chunk {i}: {response}")
@@ -109,7 +167,7 @@ class TextProofreader:
                             self.logger.error(f"Failed to process chunk {i} after {retry_count} attempts")
                             proofread_chunks.append(chunk)
             
-            # 完成��理
+            # 完成理
             if progress_callback:
                 progress_callback(100, "校对完成")
             

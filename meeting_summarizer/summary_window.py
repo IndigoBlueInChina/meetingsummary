@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QTextEdit, QPushButton, 
+from PyQt6.QtWidgets import (QDialog, QWidget, QVBoxLayout, QLabel, QTextEdit, QPushButton, 
                             QComboBox, QFrame, QHBoxLayout, QFileDialog, QApplication, 
                             QMessageBox, QGroupBox)
 from PyQt6.QtCore import Qt
@@ -9,9 +9,9 @@ from docx import Document
 from utils.flexible_logger import Logger
 import traceback
 
-class SummaryWindow(QWidget):
-    def __init__(self):
-        super().__init__()
+class SummaryWindow(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self.logger = Logger(
             name="summary_window",
             console_output=True,
@@ -19,9 +19,15 @@ class SummaryWindow(QWidget):
             log_level="INFO"
         )
         self.project_manager = None
+        
+        # 设置窗口属性
+        self.setWindowTitle("会议总结")
+        self.setModal(True)  # 设置为模态对话框
+        self.resize(800, 600)  # 设置合适的窗口大小
+        
         self.init_ui()
         self.logger.info("SummaryWindow initialized")
-        
+    
     def init_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(20, 20, 20, 20)
@@ -72,11 +78,29 @@ class SummaryWindow(QWidget):
         export_group.setLayout(export_layout)
         summary_layout.addWidget(export_group)
         
-        main_layout.addWidget(summary_container)
-
-    def set_summary(self, text):
-        """Set summary text"""
-        self.summary_text.setPlainText(text)
+        # 添加底部按钮布局
+        button_layout = QHBoxLayout()
+        
+        # 添加关闭按钮
+        close_button = QPushButton("关闭")
+        close_button.clicked.connect(self.accept)  # 使用 accept() 关闭对话框
+        close_button.setStyleSheet("""
+            QPushButton {
+                background-color: #6C757D;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #5A6268;
+            }
+        """)
+        
+        button_layout.addStretch()
+        button_layout.addWidget(close_button)
+        
+        main_layout.addLayout(button_layout)
     
     def set_project_manager(self, project_manager):
         """Set project manager"""
@@ -85,63 +109,6 @@ class SummaryWindow(QWidget):
             self.logger.info(f"已设置项目管理器: {project_manager}")
         except Exception as e:
             self.logger.error(f"设置项目管理器失败: {str(e)}")
-    
-    def export_summary(self):
-        """Export summary in selected format and language"""
-        try:
-            if not self.summary_text.toPlainText().strip():
-                QMessageBox.warning(self, "错误", "没有可导出的内容")
-                return
-            
-            # Get selected format and language
-            export_format = self.format_combo.currentText()
-            language = self.language_combo.currentText()
-            
-            # Get save file path
-            file_filter = {
-                "Markdown": "Markdown Files (*.md)",
-                "Word": "Word Files (*.docx)"
-            }
-            
-            file_extension = {
-                "Markdown": ".md",
-                "Word": ".docx"
-            }
-            
-            file_path, _ = QFileDialog.getSaveFileName(
-                self,
-                "保存文件",
-                "",
-                file_filter[export_format]
-            )
-            
-            if not file_path:
-                return
-                
-            # Ensure correct file extension
-            if not file_path.endswith(file_extension[export_format]):
-                file_path += file_extension[export_format]
-            
-            content = self.summary_text.toPlainText()
-            
-            # Export based on selected format
-            if export_format == "Markdown":
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(content)
-                    
-            elif export_format == "Word":
-                doc = Document()
-                doc.add_paragraph(content)
-                doc.save(file_path)
-            
-            self.logger.info(f"已导出文件: {file_path}")
-            QMessageBox.information(self, "成功", "导出成功！")
-            
-        except Exception as e:
-            error_msg = f"导出失败: {str(e)}"
-            self.logger.error(error_msg)
-            self.logger.debug(f"错误详情: {traceback.format_exc()}")
-            QMessageBox.warning(self, "错误", error_msg)
     
     def load_summary(self):
         """Load summary content from project"""
@@ -159,5 +126,17 @@ class SummaryWindow(QWidget):
                 self.summary_text.setPlainText(summary_text)
                 
         except Exception as e:
-            self.logger.error(f"加载总结文���时发生错误: {str(e)}")
+            self.logger.error(f"加载总结文件时发生错误: {str(e)}")
             traceback.print_exc() 
+    
+    def show_summary(self):
+        """显示总结对话框并加载内容"""
+        self.load_summary()
+        self.exec()  # 使用 exec() 显示模态对话框
+    
+    def export_summary(self):
+        """Export the summary to a file or another destination."""
+        # Implement the logic to export the summary here
+        self.logger.info("Exporting summary...")
+        # Example: Save to a file or display a dialog
+        # ... your export logic ...

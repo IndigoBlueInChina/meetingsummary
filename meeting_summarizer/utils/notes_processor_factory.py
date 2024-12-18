@@ -37,7 +37,7 @@ class NotesProcessorFactory:
             
         return self._processors[processor_type]
     
-    def process_text(self, text: str, processor_type: str, progress_callback=None) -> dict:
+    def process_text(self, text: str, processor_type: str, progress_callback=None, topic: str = "", keywords: str = "") -> dict:
         """
         处理文本
         
@@ -45,12 +45,25 @@ class NotesProcessorFactory:
             text: 要处理的文本
             processor_type: 处理器类型
             progress_callback: 进度回调函数
+            topic: 主题内容
+            keywords: 关键字内容(多个关键字可用空格分隔)
         Returns:
             处理结果
         """
         try:
             self.logger.info(f"开始使用 {processor_type} 处理器处理文本")
             processor = self.get_processor(processor_type)
+            
+            # 格式化关键字 - 将空格分隔的关键字转换为逗号分隔
+            formatted_keywords = ",".join(
+                [kw.strip() for kw in keywords.split() if kw.strip()]
+            )
+            self.logger.info(f"格式化后的关键字: {formatted_keywords}")
+            
+            # 为处理器设置主题和格式化后的关键字
+            if hasattr(processor, 'set_context'):
+                processor.set_context(topic=topic, keywords=formatted_keywords)
+                self.logger.info(f"已设置处理器上下文 - 主题: {topic}, 关键字: {formatted_keywords}")
             
             if processor_type == "basic":
                 result = processor.proofread_text(text, progress_callback)

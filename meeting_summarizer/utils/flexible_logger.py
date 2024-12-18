@@ -25,7 +25,7 @@ class Logger:
     
     def __init__(
         self, 
-        name: str = "app",  # 使用名称来区分不同的日志文件
+        name: str = "app",  # Use name to distinguish different log files
         console_output: bool = True, 
         file_output: bool = False, 
         log_level: str = "INFO",
@@ -45,12 +45,12 @@ class Logger:
         self.log_level = log_level.upper()
         self.log_format = log_format
         
-        # 获取配置目录并创建日志目录
+        # Get config directory and create logs directory
         settings = Settings()
         self.log_dir = Path(settings.config_dir) / "logs"
         self.log_dir.mkdir(parents=True, exist_ok=True)
         
-        # 设置日志文件路径
+        # Set log file path
         self.log_file = self.log_dir / f"{name}.log"
         
         # Log level hierarchy
@@ -123,18 +123,18 @@ class Logger:
         """Shortcut for logging critical messages"""
         self.log(*messages, level="CRITICAL", sep=sep, end=end)
 
-# 示例使用
+# Usage examples
 if __name__ == "__main__":
-    # 控制台输出示例
+    # Console output example
     logger1 = Logger(name="test1", console_output=True, log_level="DEBUG")
-    logger1.debug("这是一个调试信息")
-    logger1.info("这是一个普通信息")
+    logger1.debug("This is a debug message")
+    logger1.info("This is an info message")
     
-    # 文件输出示例
+    # File output example
     logger2 = Logger(name="test2", console_output=False, file_output=True)
-    logger2.warning("这是一个警告信息")
-    logger2.error("这是一个错误信息")
+    logger2.warning("This is a warning message")
+    logger2.error("This is an error message")
     
-    # 同时输出到控制台和文件
+    # Output to both console and file
     logger3 = Logger(name="test3", console_output=True, file_output=True)
-    logger3.critical("这是一个关键错误")
+    logger3.critical("This is a critical error")
