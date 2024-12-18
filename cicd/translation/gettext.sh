@@ -1,0 +1,1 @@
+xgettext -d messages -o locales/messages.pot main_window.py

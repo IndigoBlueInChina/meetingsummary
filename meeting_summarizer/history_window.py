@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QListWidget,
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from utils.MeetingRecordProject import MeetingRecordProject
+from utils.flexible_logger import Logger
 import os
 from datetime import datetime
 from config.settings import Settings
@@ -16,6 +17,13 @@ class HistoryWindow(QDialog):
     
     def __init__(self):
         super().__init__()
+        self.logger = Logger(
+            name="history_window",
+            console_output=True,
+            file_output=True,
+            log_level="INFO"
+        )
+        
         self.setWindowTitle("历史会议记录")
         self.resize(1000, 600)
         self.setModal(True)
@@ -27,6 +35,8 @@ class HistoryWindow(QDialog):
         
         self.setup_ui()
         self.load_projects()
+        
+        self.logger.info("HistoryWindow initialized")
 
     def setup_ui(self):
         """设置界面"""
@@ -200,7 +210,7 @@ class HistoryWindow(QDialog):
         try:
             project_root = self.settings.config_dir / "projects"
             if not os.path.exists(project_root):
-                print(f"项目根目录不存在: {project_root}")
+                self.logger.warning(f"项目根目录不存在: {project_root}")
                 return
             
             # 获取所有项目目录
@@ -217,23 +227,22 @@ class HistoryWindow(QDialog):
             self.projects.clear()  # 清空现有项目列表
             self.project_list.clear()  # 清空列表控件
             
-            print("\n=== 开始加载项目列表 ===")
-            print(f"项目根目录: {project_root}")
-            print(f"找到 {len(project_dirs)} 个项目目录")
+            self.logger.info("\n=== 开始加载项目列表 ===")
+            self.logger.info(f"项目根目录: {project_root}")
+            self.logger.info(f"找到 {len(project_dirs)} 个项目目录")
             
             for project_path in project_dirs:
                 project_name = os.path.basename(project_path)
-                print(f"\n正在加载项目: {project_name}")
-                print(f"项目路径: {project_path}")
+                self.logger.info(f"\n正在加载项目: {project_name}")
+                self.logger.info(f"项目路径: {project_path}")
                 
                 try:
-                    
                     # 创建项目对象
                     project = MeetingRecordProject(project_name)
 
                     # 检查项目信息文件是否存在
                     if os.path.exists(project.project_info_path):
-                        print(f"项目: {project.project_name} 路径: {project.project_dir}")
+                        self.logger.info(f"项目: {project.project_name} 路径: {project.project_dir}")
 
                         # 尝试加载项目元数据
                         project.load_project_metadata()
@@ -241,23 +250,23 @@ class HistoryWindow(QDialog):
                         item = QListWidgetItem(project_name)
                         item.setData(Qt.ItemDataRole.UserRole, len(self.projects) - 1)
                         self.project_list.addItem(item)
-                        print(f"成功加载项目: {project_name}")
+                        self.logger.info(f"成功加载项目: {project_name}")
                     else:
-                        print(f"跳过无项目信息文件的项目: {project_name}")
+                        self.logger.warning(f"跳过无项目信息文件的项目: {project_name}")
                         
                 except Exception as e:
-                    print(f"加载项目 {project_name} 失败: {str(e)}")
+                    self.logger.error(f"加载项目 {project_name} 失败: {str(e)}")
                     import traceback
-                    traceback.print_exc()
+                    self.logger.error(traceback.format_exc())
             
-            print(f"\n=== 项目加载完成 ===")
-            print(f"成功加载 {len(self.projects)} 个项目")
-            print(f"跳过 {len(project_dirs) - len(self.projects)} 个无效项目")
+            self.logger.info(f"\n=== 项目加载完成 ===")
+            self.logger.info(f"成功加载 {len(self.projects)} 个项目")
+            self.logger.info(f"跳过 {len(project_dirs) - len(self.projects)} 个无效项目")
                 
         except Exception as e:
-            print(f"加载项目列表时发生错误: {str(e)}")
+            self.logger.error(f"加载项目列表时发生错误: {str(e)}")
             import traceback
-            traceback.print_exc()
+            self.logger.error(traceback.format_exc())
 
     def on_project_selected(self, current, previous):
         """当选择项目时"""
@@ -267,7 +276,7 @@ class HistoryWindow(QDialog):
         # 获取选中项目的索引
         project_index = current.data(Qt.ItemDataRole.UserRole)
         self.selected_project = self.projects[project_index]
-        print(f"\n=== 已选择项目: {self.selected_project.project_name} ===")
+        self.logger.info(f"\n=== 已选择项目: {self.selected_project.project_name} ===")
         
         # 更新界面显示
         self.update_project_display()
@@ -285,16 +294,44 @@ class HistoryWindow(QDialog):
             
             # 获取项目内容
             metadata = self.selected_project.metadata
-            if metadata.get('summary'):
-                # 显示会议总结
+            
+            # 首先检查是否有项目总结
+            if metadata.get('project_summary'):
                 self.summary_label.setText("会议总结")
-                print(f"会议总结: {metadata['summary']}")
-                self.content_display.setText(metadata['summary'])
-            elif metadata.get('transcript'):
-                # 显示转写文本
-                self.summary_label.setText("会议记录")
-                print(f"会议记录: {metadata['transcript']}")
-                self.content_display.setText(metadata['transcript'])
+                self.content_display.setText(metadata['project_summary'])
+                
+            # 如果没有项目总结，但有转写文本，则显示第一句话
+            elif transcript_file := self.selected_project.get_transcript_filename():
+                self.summary_label.setText("会议概要")
+                try:
+                    if os.path.exists(transcript_file):
+                        with open(transcript_file, 'r', encoding='utf-8') as f:
+                            transcript_text = f.read()
+                            # 获取第一句话 (以句号、问号或感叹号结尾)
+                            first_sentence = ""
+                            for sentence in transcript_text.split('。'):
+                                if sentence.strip():
+                                    first_sentence = sentence.strip() + "。"
+                                    break
+                            if not first_sentence:
+                                for sentence in transcript_text.split('？'):
+                                    if sentence.strip():
+                                        first_sentence = sentence.strip() + "？"
+                                        break
+                            if not first_sentence:
+                                for sentence in transcript_text.split('！'):
+                                    if sentence.strip():
+                                        first_sentence = sentence.strip() + "！"
+                                        break
+                            if not first_sentence and transcript_text.strip():
+                                # 如果没有找到标点符号，就取前100个字符
+                                first_sentence = transcript_text.strip()[:100] + "..."
+                                
+                            self.content_display.setText(first_sentence)
+                            self.logger.info(f"显示转写文本第一句: {first_sentence}")
+                except Exception as e:
+                    self.logger.error(f"读取转写文件失败: {str(e)}")
+                    self.content_display.setText("无法读取转写文件")
             else:
                 # 清空内容显示
                 self.summary_label.setText("项目信息")
@@ -305,7 +342,7 @@ class HistoryWindow(QDialog):
             self.file_info.show()
             
         except Exception as e:
-            print(f"更新项目显示时发生错误: {str(e)}")
+            self.logger.error(f"更新项目显示时发生错误: {str(e)}")
             import traceback
             traceback.print_exc()
 

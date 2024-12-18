@@ -11,17 +11,20 @@ from utils.meeting_notes_generator import MeetingNotesGenerator
 from utils.flexible_logger import Logger
 from utils.notes_processor_factory import NotesProcessorFactory
 import traceback
+from meeting_summarizer.summary_window import SummaryWindow  # Import the SummaryWindow class
 
 class ProcessThread(QThread):
     progress_updated = pyqtSignal(int, str)
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
 
-    def __init__(self, processor_factory, processor_type, text):
+    def __init__(self, processor_factory, processor_type, text, topic="", keywords=""):
         super().__init__()
         self.processor_factory = processor_factory
         self.processor_type = processor_type
         self.text = text
+        self.topic = topic
+        self.keywords = keywords
         self._stop_flag = False
         self.logger = Logger(
             name="process_thread",
@@ -32,31 +35,42 @@ class ProcessThread(QThread):
 
     def run(self):
         try:
-            self.logger.info(f"开始处理文本，处理器类型: {self.processor_type}")
+            self.logger.info(f"Starting text processing, processor type: {self.processor_type}")
+            self.logger.info(f"Topic: {self.topic}")
+            self.logger.info(f"Keywords: {self.keywords}")
+            
+            # Add initial progress update
+            self.progress_updated.emit(0, "Processing started...")
+            
             result = self.processor_factory.process_text(
                 self.text,
                 self.processor_type,
-                self.progress_updated.emit
+                self.progress_updated.emit,  # Pass progress update callback
+                self.topic,
+                self.keywords
             )
+            
+            # Add completion progress update
             if not self._stop_flag:
-                self.logger.info("文本处理完成，发送结果")
+                self.progress_updated.emit(100, "Processing complete")
+                self.logger.info("Text processing completed, sending results")
                 self.finished.emit(result)
             else:
-                self.logger.info("处理线程检测到停止信号，终止处理")
+                self.logger.info("Processing thread detected stop signal, terminating")
         except Exception as e:
-            self.logger.error(f"处理文本时发生错误: {str(e)}")
+            self.logger.error(f"Error during text processing: {str(e)}")
             self.error.emit(str(e))
 
     def stop(self):
-        """停止处理"""
-        self.logger.info("接收到停止信号")
+        """Stop processing"""
+        self.logger.info("Received stop signal")
         self._stop_flag = True
         processor = self.processor_factory.get_processor(self.processor_type)
         if hasattr(processor, 'stop'):
-            self.logger.info(f"正在停止 {self.processor_type} 处理器...")
+            self.logger.info(f"Stopping {self.processor_type} processor...")
             processor.stop()
-            self.logger.info(f"{self.processor_type} 处理器已停止")
-        self.logger.info("处理线程停止操作完成")
+            self.logger.info(f"{self.processor_type} processor stopped")
+        self.logger.info("Processing thread stop operation completed")
 
 class TranscriptWindow(QWidget):
     def __init__(self):
@@ -71,13 +85,13 @@ class TranscriptWindow(QWidget):
         self.processor_factory = NotesProcessorFactory()
         self.is_processing = False
         
-        # 设置默认处理器类型
+        # Set default processor type
         self.current_processor_type = "basic"
         
-        # 初始化UI
+        # Initialize UI
         self.init_ui()
         
-        # 检查LLM状态
+        # Check LLM status
         self.check_llm_status()
         
         self.logger.info("TranscriptWindow initialized")
@@ -94,7 +108,7 @@ class TranscriptWindow(QWidget):
         title_group = QHBoxLayout()
         
         # Title
-        title = QLabel("转写内容")
+        title = QLabel("Transcript Content")
         title.setFont(QFont("Arial", 24, QFont.Weight.Bold))
         title_group.addWidget(title)
         
@@ -102,11 +116,11 @@ class TranscriptWindow(QWidget):
         title_group.addSpacing(20)
         
         # Template selector
-        template_label = QLabel("模板:")
+        template_label = QLabel("Template:")
         template_label.setFont(QFont("Arial", 12))
         self.template_combo = QComboBox()
-        self.template_combo.addItems(["仅校对", "课堂笔记", "会议记录"])
-        self.template_combo.setCurrentText("仅校对")
+        self.template_combo.addItems(["Proofreading Only", "Lecture Notes", "Meeting Minutes"])
+        self.template_combo.setCurrentText("Proofreading Only")
         self.template_combo.setFixedWidth(150)  # 设置固定宽度
         self.template_combo.setStyleSheet("""
             QComboBox {
@@ -204,12 +218,12 @@ class TranscriptWindow(QWidget):
         topic_layout = QVBoxLayout(topic_container)
         topic_layout.setContentsMargins(0, 0, 0, 0)
         
-        topic_label = QLabel("主题")
+        topic_label = QLabel("Topic")
         topic_label.setFont(QFont("Arial", 12))
         
         self.topic_text = QTextEdit()
         self.topic_text.setMaximumHeight(100)
-        self.topic_text.setPlaceholderText("会议主要讨论的内容...")
+        self.topic_text.setPlaceholderText("Main discussion topics...")
         self.topic_text.setStyleSheet("""
             QTextEdit {
                 border: 1px solid #CCCCCC;
@@ -231,12 +245,12 @@ class TranscriptWindow(QWidget):
         keywords_layout = QVBoxLayout(keywords_container)
         keywords_layout.setContentsMargins(0, 0, 0, 0)
         
-        keywords_label = QLabel("关键字")
+        keywords_label = QLabel("Keywords")
         keywords_label.setFont(QFont("Arial", 12))
         
         self.keywords_text = QTextEdit()
         self.keywords_text.setMaximumHeight(100)
-        self.keywords_text.setPlaceholderText("重要的关键词...")
+        self.keywords_text.setPlaceholderText("Important keywords...")
         self.keywords_text.setStyleSheet("""
             QTextEdit {
                 border: 1px solid #CCCCCC;
@@ -273,7 +287,7 @@ class TranscriptWindow(QWidget):
         button_progress_layout.setSpacing(10)
         
         # 校对按钮
-        self.proofread_button = QPushButton("校对")
+        self.proofread_button = QPushButton("生成")
         self.proofread_button.setStyleSheet("""
             QPushButton {
                 background-color: #33CCFF;
@@ -296,17 +310,19 @@ class TranscriptWindow(QWidget):
         self.progress_bar = QProgressBar()
         self.progress_bar.setStyleSheet("""
             QProgressBar {
-                border: 1px solid #CCCCCC;
-                border-radius: 5px;
+                border: none;  /* 移除边框 */
+                background-color: #F0F0F0;  /* 浅灰色背景 */
                 text-align: center;
                 height: 25px;
+                border-radius: 12px;  /* 圆角 */
             }
             QProgressBar::chunk {
                 background-color: #33CCFF;
-                border-radius: 5px;
+                border-radius: 12px;  /* 进度条圆角 */
             }
         """)
-        self.progress_bar.hide()  # 初始时隐藏进度条
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(False)  # 隐藏进度文本
         
         button_progress_layout.addWidget(self.proofread_button)
         button_progress_layout.addWidget(self.progress_bar)
@@ -320,27 +336,27 @@ class TranscriptWindow(QWidget):
     def load_content(self):
         """Load transcript content"""
         try:
-            self.logger.info("开始加载转写内容")
+            self.logger.info("Starting to load transcript content")
             if not self.project_manager:
-                raise ValueError("未设置项目管理器，无法加载内容")
+                raise ValueError("Project manager not set, cannot load content")
             
-            self.logger.info("开始加载转写文件...")
+            self.logger.info("Starting to load transcript file...")
             self.load_transcriptfile()
-            self.logger.info("内容加载完成")
+            self.logger.info("Content loading completed")
             
         except Exception as e:
-            self.logger.error(f"加载内容时发生错误: {str(e)}")
+            self.logger.error(f"Error loading content: {str(e)}")
             traceback.print_exc()
     
     def load_transcriptfile(self):
         """Load transcript file"""
         try:
             if not self.project_manager:
-                raise ValueError("未设置项目管理器")
+                raise ValueError("Project manager not set")
             
             transcript_file = self.project_manager.get_transcript_filename()
             if not transcript_file or not os.path.exists(transcript_file):
-                self.transcript_text.setText("未找到转写文件")
+                self.transcript_text.setText("Transcript file not found")
                 return
             
             with open(transcript_file, 'r', encoding='utf-8') as f:
@@ -348,7 +364,7 @@ class TranscriptWindow(QWidget):
                 self.transcript_text.setPlainText(transcript_text)
             
         except Exception as e:
-            self.logger.error(f"加载转写文件时发生错误: {str(e)}")
+            self.logger.error(f"Error loading transcript file: {str(e)}")
             traceback.print_exc()
     
     def on_proofread_clicked(self):
@@ -376,6 +392,10 @@ class TranscriptWindow(QWidget):
                 QMessageBox.warning(self, "错误", "没有可用的文本内容")
                 return
             
+            # 获取主题和关键字
+            topic = self.topic_text.toPlainText().strip()
+            keywords = self.keywords_text.toPlainText().strip()
+            
             # 更新UI状态
             self.is_processing = True
             self.proofread_button.setText("停止")
@@ -400,11 +420,13 @@ class TranscriptWindow(QWidget):
             self.progress_bar.setValue(0)
             self.progress_bar.show()
             
-            # 启动处理线程
+            # 启动处理线程，传入主题和关键字
             self.process_thread = ProcessThread(
                 self.processor_factory,
                 self.current_processor_type,
-                current_text
+                current_text,
+                topic,
+                keywords
             )
             self.process_thread.progress_updated.connect(self.update_progress)
             self.process_thread.finished.connect(self.on_process_finished)
@@ -424,23 +446,43 @@ class TranscriptWindow(QWidget):
 
     def update_progress(self, progress, status_text):
         """更新进度条"""
+        self.progress_bar.setTextVisible(True)  # 显示进度文本
         self.progress_bar.setValue(progress)
         self.progress_bar.setFormat(f"{status_text} ({progress}%)")
 
     def on_process_finished(self, results):
         """文本处理完成处理"""
         try:
-            if results and 'proofread_text' in results:
-                self.transcript_text.setPlainText(results['proofread_text'])
+            if results:
+                # 保存生成的笔记
                 if self.project_manager:
-                    new_transcript_file = self.project_manager.get_transcript_new_filename()
-                    with open(new_transcript_file, 'w', encoding='utf-8') as f:
-                        f.write(results['proofread_text'])
-                    self.project_manager.add_proofread_transcript(new_transcript_file)
-                    self.logger.info(f"文本处理已保存至: {new_transcript_file}")
+                    if 'proofread_text' in results:  # 校对结果
+                        new_summary_file = self.project_manager.get_summary_new_filename()
+                        with open(new_summary_file, 'w', encoding='utf-8') as f:
+                            f.write(results['proofread_text'])
+                        self.project_manager.add_summary(new_summary_file)
+                        self.logger.info(f"校对文本已保存至: {new_summary_file}")
+                    
+                    elif 'markdown_notes' in results:  # 笔记生成结果
+                        summary_file = self.project_manager.get_summary_new_filename()
+                        with open(summary_file, 'w', encoding='utf-8') as f:
+                            f.write(results['markdown_notes'])
+                        self.project_manager.add_summary(summary_file)
+                        self.logger.info(f"生成的笔记已保存至: {summary_file}")
+                        
+                        # Open the SummaryWindow as a modal dialog
+                        summary_window = SummaryWindow(self)  # Pass the parent
+                        summary_window.set_project_manager(self.project_manager)  # Pass the project manager
+                        summary_window.load_summary()  # Load the summary content
+                        summary_window.exec()  # Show the summary window as a modal dialog
+                        
+                        # 通知主窗口切换到总结页面
+                        if hasattr(self.parent(), 'switch_to_summary'):
+                            self.parent().switch_to_summary()
+                    
         except Exception as e:
-            self.logger.error(f"保存文本处理结果失败: {str(e)}")
-            QMessageBox.warning(self, "保存失败", f"保存文本处理结果时发生错误: {str(e)}")
+            self.logger.error(f"保���处理结果失败: {str(e)}")
+            QMessageBox.warning(self, "保存失败", f"保存处理结果时发生错误: {str(e)}")
         finally:
             self.reset_process_ui()
 
@@ -453,7 +495,7 @@ class TranscriptWindow(QWidget):
     def reset_process_ui(self):
         """重置文本处理相关的UI状态"""
         self.is_processing = False
-        self.proofread_button.setText("校对")
+        self.proofread_button.setText("生成")
         # 恢复按钮原来的蓝色样式
         self.proofread_button.setStyleSheet("""
             QPushButton {
@@ -471,7 +513,8 @@ class TranscriptWindow(QWidget):
                 background-color: #CCCCCC;
             }
         """)
-        self.progress_bar.hide()
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(False)  # 隐藏进度文本
     
     def set_transcript(self, text):
         """Set transcript text"""
@@ -545,35 +588,34 @@ class TranscriptWindow(QWidget):
 
     def open_llm_settings(self):
         """Open LLM settings page"""
-        # TODO: Implement settings page opening functionality
-        print("TODO: 打开LLM设置页面")
+        self.logger.info("TODO: Open LLM settings page")
 
     def on_template_changed(self, index):
-        """处理模板选择变化"""
+        """Handle template selection change"""
         template = self.template_combo.currentText()
         self.logger.info(f"Template changed to: {template}")
         
-        # 根据不同模板设置不同的提示文本
-        if template == "仅校对":
-            self.topic_text.setPlaceholderText("会议主要讨论的内容...")
-            self.keywords_text.setPlaceholderText("重要的关键词...")
-        elif template == "课堂笔记":
-            self.topic_text.setPlaceholderText("课程主题和学习目标...")
-            self.keywords_text.setPlaceholderText("课程重点和关键概念...")
-        elif template == "会议记录":
-            self.topic_text.setPlaceholderText("会议议题和目标...")
-            self.keywords_text.setPlaceholderText("会议决议和关键行动项...")
+        # Set different placeholder text based on template
+        if template == "Proofreading Only":
+            self.topic_text.setPlaceholderText("Main discussion topics...")
+            self.keywords_text.setPlaceholderText("Important keywords...")
+        elif template == "Lecture Notes":
+            self.topic_text.setPlaceholderText("Course topics and learning objectives...")
+            self.keywords_text.setPlaceholderText("Course highlights and key concepts...")
+        elif template == "Meeting Minutes":
+            self.topic_text.setPlaceholderText("Meeting agenda and objectives...")
+            self.keywords_text.setPlaceholderText("Meeting resolutions and key action items...")
         
-        # 更新校对提示和处理逻辑
+        # Update processing template and logic
         self.update_proofread_template(template)
 
     def update_proofread_template(self, template):
         """更新处理模板"""
-        if template == "仅校对":
+        if template == "Proofreading Only":
             self.current_processor_type = "basic"
-        elif template == "课堂笔记":
+        elif template == "Lecture Notes":
             self.current_processor_type = "lecture"
-        elif template == "会议记录":
+        elif template == "Meeting Minutes":
             self.current_processor_type = "meeting"
             
         self.logger.info(f"Processor type set to: {self.current_processor_type}")

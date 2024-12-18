@@ -16,6 +16,7 @@ from tkinter import filedialog
 import shutil
 from utils.flexible_logger import Logger
 from summary_window import SummaryWindow
+from datetime import datetime
 
 class SlideStackedWidget(QStackedWidget):
     def __init__(self):
@@ -335,7 +336,7 @@ class MainWindow(QMainWindow):
 
         button_layout.addLayout(header_layout)
 
-        # 添加副标���
+        # 添加副标题
         subtitle_label = QLabel(subtitle)
         subtitle_label.setStyleSheet("color: #666666;")
         button_layout.addWidget(subtitle_label)
@@ -376,6 +377,19 @@ class MainWindow(QMainWindow):
             print(f"Error switching to transcript view: {str(e)}")
             import traceback
             traceback.print_exc()
+
+    def switch_to_summary(self):
+        """显示总结对话框"""
+        try:
+            if not hasattr(self, 'summary_dialog'):
+                self.summary_dialog = SummaryWindow(self)
+                self.summary_dialog.set_project_manager(self.project_manager)
+            
+            self.summary_dialog.show_summary()
+            self.logger.info("已显示总结对话框")
+            
+        except Exception as e:
+            self.logger.error(f"显示总结对话框失败: {str(e)}")
 
 def main():
     try:
