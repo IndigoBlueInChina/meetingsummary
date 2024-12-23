@@ -7,7 +7,7 @@ from PyQt6.QtGui import QIcon, QFont
 from utils.MeetingRecordProject import MeetingRecordProject
 from recording_window import RecordingWidget
 from processing_window import ProcessingWidget
-from meeting_summarizer.transcript_window import TranscriptWindow
+from transcript_window import TranscriptWindow
 import os
 from history_window import HistoryWindow
 from pathlib import Path

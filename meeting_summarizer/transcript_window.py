@@ -11,7 +11,7 @@ from utils.meeting_notes_generator import MeetingNotesGenerator
 from utils.flexible_logger import Logger
 from utils.notes_processor_factory import NotesProcessorFactory
 import traceback
-from meeting_summarizer.summary_window import SummaryWindow  # Import the SummaryWindow class
+from summary_window import SummaryWindow  # Import the SummaryWindow class
 
 class ProcessThread(QThread):
     progress_updated = pyqtSignal(int, str)

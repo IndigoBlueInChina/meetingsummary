@@ -5,8 +5,8 @@ import json
 import re
 from pathlib import Path
 from utils.chunker import TranscriptChunker
-from meeting_summarizer.utils.llm_factory import LLMFactory
-from meeting_summarizer.config.settings import Settings
+from utils.llm_factory import LLMFactory
+from config.settings import Settings
 
 class MeetingSummarizer:
     def __init__(self, 

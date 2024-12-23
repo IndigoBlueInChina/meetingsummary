@@ -10,10 +10,12 @@ import time
 from audio_recorder.recorder import record_audio, list_audio_devices
 from utils.MeetingRecordProject import MeetingRecordProject
 import os
+from utils.flexible_logger import Logger
 
 class RecordingWidget(QWidget):
     def __init__(self):
         super().__init__()
+        self.logger = Logger(name="recording_widget", console_output=True, file_output=True, log_level="DEBUG")
         
         layout = QVBoxLayout(self)
         layout.setSpacing(20)
@@ -258,14 +260,14 @@ class RecordingWidget(QWidget):
         """开始录音"""
         try:
             if self.is_recording:
-                print("录音已在进行中")
+                self.logger.warning("录音已在进行中")
                 return
             
             # 创建新的 MeetingRecordProject 对象
             project_name = datetime.now().strftime("%Y%m%d_%H%M")
             self.project_manager = MeetingRecordProject(project_name)
             self.project_manager.create()  # 创建项目目录结构
-            print(f"项目目录已创建: {self.project_manager.project_dir}")
+            self.logger.info(f"项目目录已创建: {self.project_manager.project_dir}")
             
             # 重置波形图数据
             self.waveform_data = []
@@ -337,7 +339,7 @@ class RecordingWidget(QWidget):
             self.timer.start(1000)  # 每秒更新一次
             
         except Exception as e:
-            print(f"开始录音时发生错误: {str(e)}")
+            self.logger.error(f"开始录音时发生错误: {str(e)}")
             import traceback
             traceback.print_exc()
             self.is_recording = False
@@ -455,7 +457,7 @@ class RecordingWidget(QWidget):
             # 获取主窗口并切换到处理页面
             main_window = self.window()
             if main_window and self.project_manager:
-                # 更新 project_manager 的录音文件路径
+                # 更新 project_manager 的录音文件路��
                 self.project_manager.add_audio(self.audio_files[0])
                 print(f"已更新项目管理器的录音文件路径: {self.project_manager.get_audio_filename()}")
 
