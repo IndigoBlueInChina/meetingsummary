@@ -7,7 +7,7 @@ import os
 from pydub import AudioSegment
 import numpy as np
 import torch
-import logging
+from utils.flexible_logger import Logger
 import traceback
 
 
@@ -18,13 +18,14 @@ class ProcessingThread(QThread):
     
     def __init__(self, project_manager):
         super().__init__()
+        self.logger = Logger(name="ProcessingThread", console_output=True, file_output=True, log_level="DEBUG")
         self.project_manager = project_manager
         
     def run(self):
         try:
             # 使用 project_manager 中的实际录音文件路径
             audio_file_path = self.project_manager.get_audio_filename()
-            print(f"正在处理音频文件: {audio_file_path}")
+            self.logger.info(f"正在处理音频文件: {audio_file_path}")
             
             if not os.path.exists(audio_file_path):
                 raise FileNotFoundError(f"找不到音频文件: {audio_file_path}")
@@ -61,7 +62,7 @@ class ProcessingThread(QThread):
             self.project_manager.add_transcript(transcript_file)
             
         except Exception as e:
-            print(f"处理过程中发生错误: {str(e)}")
+            self.logger.error(f"处理过程中发生错误: {str(e)}")
             import traceback
             traceback.print_exc()
             self.finished.emit(False, str(e))

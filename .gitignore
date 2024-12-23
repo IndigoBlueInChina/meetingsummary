@@ -10,3 +10,4 @@ transcripts/*.*
 /meeting_summarizer/text_processor/__pycache__
 /meeting_summarizer/utils/__pycache__
 /meeting_summarizer/config/__pycache__
+/meeting_summarizer/build
