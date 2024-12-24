@@ -3,6 +3,7 @@ from utils.llm_proofreader import TextProofreader
 from utils.meeting_notes_generator import MeetingNotesGenerator
 from utils.lecture_notes_generator import LectureNotesGenerator
 from utils.flexible_logger import Logger
+from utils.processor_types import ProcessorType
 
 class NotesProcessorFactory:
     def __init__(self):
@@ -19,19 +20,20 @@ class NotesProcessorFactory:
         获取或创建指定类型的处理器
         
         Args:
-            processor_type: 处理器类型 ('basic', 'lecture', 'meeting')
+            processor_type: 处理器类型 (ProcessorType 枚举值)
         Returns:
             对应的处理器实例
         """
+        if not ProcessorType.is_valid(processor_type):
+            raise ValueError(f"Unknown processor type: {processor_type}")
+            
         if processor_type not in self._processors:
-            if processor_type == "basic":
+            if processor_type == ProcessorType.PROOFREADING.value:
                 self._processors[processor_type] = TextProofreader()
-            elif processor_type == "lecture":
+            elif processor_type == ProcessorType.LECTURE.value:
                 self._processors[processor_type] = LectureNotesGenerator()
-            elif processor_type == "meeting":
+            elif processor_type == ProcessorType.MEETING.value:
                 self._processors[processor_type] = MeetingNotesGenerator()
-            else:
-                raise ValueError(f"Unknown processor type: {processor_type}")
             
             self.logger.info(f"Created new processor of type: {processor_type}")
             
@@ -65,14 +67,14 @@ class NotesProcessorFactory:
                 processor.set_context(topic=topic, keywords=formatted_keywords)
                 self.logger.info(f"已设置处理器上下文 - 主题: {topic}, 关键字: {formatted_keywords}")
             
-            if processor_type == "basic":
+            if processor_type == ProcessorType.PROOFREADING.value:
                 result = processor.proofread_text(text, progress_callback)
                 self.logger.info("基础校对处理完成")
                 return result
             else:
                 self.logger.info(f"使用 {processor_type} 处理器生成笔记")
                 return {
-                    'proofread_text': processor.generate_notes(text),
+                    'markdown_notes': processor.generate_notes(text),
                     'changes': []
                 }
                 

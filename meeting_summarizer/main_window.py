@@ -159,6 +159,7 @@ class MainWindow(QMainWindow):
                 background-color: #E0E0E0;
             }
         """)
+        settings_button.clicked.connect(self.show_settings)  # 添加点击事件处理
         settings_layout = QHBoxLayout()
         settings_layout.addStretch()
         settings_layout.addWidget(settings_button)
@@ -390,6 +391,12 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             self.logger.error(f"显示总结对话框失败: {str(e)}")
+
+    def show_settings(self):
+        """显示设置窗口"""
+        from settings_window import SettingsWindow
+        settings_dialog = SettingsWindow(self)
+        settings_dialog.exec()  # 以模态方式显示设置窗口
 
 def main():
     try:
