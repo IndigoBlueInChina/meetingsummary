@@ -24,7 +24,7 @@ class TextProofreader:
             self.logger.error(f"Failed to initialize LLM: {str(e)}")
             raise
             
-        self.chunker = TranscriptChunker(max_tokens=1000)
+        self.chunker = TranscriptChunker(max_tokens=2000)
         self.language_detector = LanguageDetector()
         self._stop_flag = False
         self._topic = ""

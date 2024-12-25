@@ -218,17 +218,52 @@ def get_transcriber():
     return _transcriber
 
 def transcribe_audio(audio_input):
-    """统一的转写接口"""
-    transcriber = get_transcriber()
+    """
+    转写音频内容
     
-    if isinstance(audio_input, str):
-        # 如果输入是文件路径
-        return transcriber.transcribe_file(audio_input)
-    elif isinstance(audio_input, AudioSegment):
-        # 如果输入是音频段
-        return transcriber.transcribe_segment(audio_input)
-    else:
-        raise ValueError("Unsupported input type")
+    Args:
+        audio_input: 可以是以下类型之一：
+            - str: 音频文件路径
+            - numpy.ndarray: 音频数据数组
+            - AudioSegment: pydub的AudioSegment对象
+            
+    Returns:
+        str: 转写的文本
+    """
+    try:
+        transcriber = get_transcriber()
+        
+        if isinstance(audio_input, str):
+            return transcriber.transcribe_file(audio_input)
+        elif isinstance(audio_input, AudioSegment):
+            return transcriber.transcribe_segment(audio_input)
+        elif isinstance(audio_input, np.ndarray):
+            # 直接使用 numpy 数组
+            results = transcriber.model.generate(
+                input=audio_input,
+                batch_size_s=60,
+                language='auto',
+                signal_type='linear',
+                use_itn=True,
+                mode='offline'
+            )
+            
+            if results and len(results) > 0:
+                text = ""
+                for result in results:
+                    if isinstance(result, dict) and 'text' in result:
+                        text += result['text'] + " "
+                    elif isinstance(result, str):
+                        text += result + " "
+                return transcriber.clean_transcript(text)
+            return ""
+        else:
+            raise ValueError(f"Unsupported input type: {type(audio_input)}")
+            
+    except Exception as e:
+        self.logger.error(f"Error in transcribe_audio: {str(e)}")
+        traceback.print_exc()
+        raise
 
 if __name__ == "__main__":
     # 测试代码

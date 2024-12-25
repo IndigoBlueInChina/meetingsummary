@@ -23,7 +23,6 @@ class ProcessingThread(QThread):
         
     def run(self):
         try:
-            # 使用 project_manager 中的实际录音文件路径
             audio_file_path = self.project_manager.get_audio_filename()
             self.logger.info(f"正在处理音频文件: {audio_file_path}")
             
@@ -32,23 +31,24 @@ class ProcessingThread(QThread):
             
             # 加载完整音频文件
             audio = AudioSegment.from_file(audio_file_path)
-            total_length = len(audio)  # 总时长（毫秒）
+            # 确保音频是单声道、16kHz采样率
+            audio = audio.set_channels(1).set_frame_rate(16000)
+            total_length = len(audio)
 
             # 开始音频转写
             transcript_text = ""
-            segment_length = 10000  # 每段音频的长度（毫秒）
+            segment_length = 10000  # 每段10秒
 
             for i in range(0, total_length, segment_length):
                 # 获取音频段
                 segment = audio[i:i + segment_length]
                 
-                # 使用 transcribe_audio 处理音频段
+                # 直接传递 AudioSegment 对象
                 segment_text = transcribe_audio(segment)
                 transcript_text += segment_text + " "
 
-                # 更新进度
                 progress = min(int((i + segment_length) / total_length * 100), 100)
-                self.progress_updated.emit("音频转写中...", progress)  # 发出进度更新信号
+                self.progress_updated.emit("音频转写中...", progress)
 
             # 确保转写文本目录存在
             transcript_file = self.project_manager.get_transcript_new_filename()

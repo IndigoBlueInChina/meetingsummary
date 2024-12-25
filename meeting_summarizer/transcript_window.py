@@ -472,15 +472,15 @@ class TranscriptWindow(QWidget):
                         self.project_manager.add_summary(summary_file)
                         self.logger.info(f"生成的笔记已保存至: {summary_file}")
                         
-                        # Open the SummaryWindow as a modal dialog
-                        summary_window = SummaryWindow(self)  # Pass the parent
-                        summary_window.set_project_manager(self.project_manager)  # Pass the project manager
-                        summary_window.load_summary()  # Load the summary content
-                        summary_window.exec()  # Show the summary window as a modal dialog
+                    # Open the SummaryWindow as a modal dialog
+                    summary_window = SummaryWindow(self)  # Pass the parent
+                    summary_window.set_project_manager(self.project_manager)  # Pass the project manager
+                    summary_window.load_summary()  # Load the summary content
+                    summary_window.exec()  # Show the summary window as a modal dialog
                         
-                        # 通知主窗口切换到总结页面
-                        if hasattr(self.parent(), 'switch_to_summary'):
-                            self.parent().switch_to_summary()
+                    # 通知主窗口切换到总结页面
+                    if hasattr(self.parent(), 'switch_to_summary'):
+                        self.parent().switch_to_summary()
                     
         except Exception as e:
             self.logger.error(f"保存处理结果失败: {str(e)}")

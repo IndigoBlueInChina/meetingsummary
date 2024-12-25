@@ -191,7 +191,7 @@ class LLMFactory:
                     model=llm_config.get("model_name", "qwen2.5"),
                     base_url=llm_config.get("api_url", "http://localhost:11434"),
                     temperature=llm_config.get("temperature", 0),
-                    timeout_s=300  # 设置超时时间为 300 秒（5分钟）
+                    request_timeout=300  # 设置超时时间为 300 秒（5分钟）
                 )
                 
             elif provider_type == "deepseek":

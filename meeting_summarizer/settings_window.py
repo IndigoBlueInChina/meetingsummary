@@ -340,26 +340,35 @@ class SettingsWindow(QDialog):
                     self.status_label.setProperty("status", "error")
                     return
                 
-                # 发送测试请求
+                # 发送测试请求并捕获响应
                 self.logger.info("Sending test request to LLM")
-                response = llm.complete("Hi")
-                
-                if response:
-                    self.logger.info("LLM connection test successful")
-                    self.status_label.setText("连接成功")
-                    self.status_label.setProperty("status", "success")
-                else:
-                    self.logger.warning("LLM connection test failed: no response")
-                    self.status_label.setText("连接失败：无响应")
+                try:
+                    response = llm.complete("Hi")
+                    self.logger.info(f"LLM response: {response}")
+                    
+                    # 从 CompletionResponse 对象中获取文本
+                    if hasattr(response, 'text'):
+                        response_text = response.text
+                    else:
+                        response_text = str(response)
+                    
+                    if response_text:
+                        self.logger.info(f"LLM connection test successful, response text: {response_text}")
+                        self.status_label.setText("连接成功")
+                        self.status_label.setProperty("status", "success")
+                    else:
+                        self.logger.warning("LLM connection test failed: empty response")
+                        self.status_label.setText("连接失败：空响应")
+                        self.status_label.setProperty("status", "error")
+                        
+                except Exception as e:
+                    self.logger.error(f"LLM request error: {str(e)}")
+                    self.status_label.setText(f"请求错误: {str(e)}")
                     self.status_label.setProperty("status", "error")
                     
-            except ValueError as e:
+            except Exception as e:
                 self.logger.error(f"LLM configuration error: {str(e)}")
                 self.status_label.setText(f"配置错误: {str(e)}")
-                self.status_label.setProperty("status", "error")
-            except Exception as e:
-                self.logger.error(f"LLM connection error: {str(e)}", exc_info=True)
-                self.status_label.setText(f"连接错误: {str(e)}")
                 self.status_label.setProperty("status", "error")
                 
             # 刷新样式
@@ -367,7 +376,7 @@ class SettingsWindow(QDialog):
             self.status_label.style().polish(self.status_label)
             
         except Exception as e:
-            self.logger.error(f"Verification process error: {str(e)}", exc_info=True)
+            self.logger.error(f"Verification process error: {str(e)}")
             self.status_label.setText(f"验证出错: {str(e)}")
             self.status_label.setProperty("status", "error")
             self.status_label.style().unpolish(self.status_label)
