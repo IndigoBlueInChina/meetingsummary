@@ -11,7 +11,9 @@ from utils.meeting_notes_generator import MeetingNotesGenerator
 from utils.flexible_logger import Logger
 from utils.notes_processor_factory import NotesProcessorFactory
 import traceback
-from summary_window import SummaryWindow  # Import the SummaryWindow class
+from meeting_summarizer.summary_window import SummaryWindow  # Import the SummaryWindow class
+from utils.processor_types import ProcessorType
+
 
 class ProcessThread(QThread):
     progress_updated = pyqtSignal(int, str)
@@ -86,7 +88,7 @@ class TranscriptWindow(QWidget):
         self.is_processing = False
         
         # Set default processor type
-        self.current_processor_type = "basic"
+        self.current_processor_type = ProcessorType.PROOFREADING.value
         
         # Initialize UI
         self.init_ui()
@@ -223,7 +225,7 @@ class TranscriptWindow(QWidget):
         
         self.topic_text = QTextEdit()
         self.topic_text.setMaximumHeight(100)
-        self.topic_text.setPlaceholderText("Main discussion topics...")
+        self.topic_text.setPlaceholderText("Main topics to focus on...")
         self.topic_text.setStyleSheet("""
             QTextEdit {
                 border: 1px solid #CCCCCC;
@@ -250,7 +252,7 @@ class TranscriptWindow(QWidget):
         
         self.keywords_text = QTextEdit()
         self.keywords_text.setMaximumHeight(100)
-        self.keywords_text.setPlaceholderText("Important keywords...")
+        self.keywords_text.setPlaceholderText("Key points to emphasize...")
         self.keywords_text.setStyleSheet("""
             QTextEdit {
                 border: 1px solid #CCCCCC;
@@ -373,7 +375,7 @@ class TranscriptWindow(QWidget):
             if not self.is_processing:
                 self.start_proofreading()
             else:
-                self.logger.info("用户点击停止按钮，准备停止处理...")
+                self.logger.info("用户点击停止按钮，准备停止处��...")
                 if hasattr(self, 'process_thread'):
                     self.process_thread.stop()
                     self.logger.info("已发送停止信号到处理线程")
@@ -470,18 +472,18 @@ class TranscriptWindow(QWidget):
                         self.project_manager.add_summary(summary_file)
                         self.logger.info(f"生成的笔记已保存至: {summary_file}")
                         
-                        # Open the SummaryWindow as a modal dialog
-                        summary_window = SummaryWindow(self)  # Pass the parent
-                        summary_window.set_project_manager(self.project_manager)  # Pass the project manager
-                        summary_window.load_summary()  # Load the summary content
-                        summary_window.exec()  # Show the summary window as a modal dialog
+                    # Open the SummaryWindow as a modal dialog
+                    summary_window = SummaryWindow(self)  # Pass the parent
+                    summary_window.set_project_manager(self.project_manager)  # Pass the project manager
+                    summary_window.load_summary()  # Load the summary content
+                    summary_window.exec()  # Show the summary window as a modal dialog
                         
-                        # 通知主窗口切换到总结页面
-                        if hasattr(self.parent(), 'switch_to_summary'):
-                            self.parent().switch_to_summary()
+                    # 通知主窗口切换到总结页面
+                    if hasattr(self.parent(), 'switch_to_summary'):
+                        self.parent().switch_to_summary()
                     
         except Exception as e:
-            self.logger.error(f"保���处理结果失败: {str(e)}")
+            self.logger.error(f"保存处理结果失败: {str(e)}")
             QMessageBox.warning(self, "保存失败", f"保存处理结果时发生错误: {str(e)}")
         finally:
             self.reset_process_ui()
@@ -590,32 +592,22 @@ class TranscriptWindow(QWidget):
         """Open LLM settings page"""
         self.logger.info("TODO: Open LLM settings page")
 
-    def on_template_changed(self, index):
+    def on_template_changed(self, template):
         """Handle template selection change"""
-        template = self.template_combo.currentText()
-        self.logger.info(f"Template changed to: {template}")
-        
-        # Set different placeholder text based on template
         if template == "Proofreading Only":
-            self.topic_text.setPlaceholderText("Main discussion topics...")
-            self.keywords_text.setPlaceholderText("Important keywords...")
+            self.current_processor_type = ProcessorType.PROOFREADING.value
+            # Set different placeholder text based on template
+            self.topic_text.setPlaceholderText("Main topics to focus on...")
+            self.keywords_text.setPlaceholderText("Key points to emphasize...")
         elif template == "Lecture Notes":
-            self.topic_text.setPlaceholderText("Course topics and learning objectives...")
-            self.keywords_text.setPlaceholderText("Course highlights and key concepts...")
+            self.current_processor_type = ProcessorType.LECTURE.value
+            # Set different placeholder text based on template
+            self.topic_text.setPlaceholderText("Lecture subject and main topics...")
+            self.keywords_text.setPlaceholderText("Important concepts and terms...")
         elif template == "Meeting Minutes":
+            self.current_processor_type = ProcessorType.MEETING.value
+            # Set different placeholder text based on template
             self.topic_text.setPlaceholderText("Meeting agenda and objectives...")
-            self.keywords_text.setPlaceholderText("Meeting resolutions and key action items...")
-        
-        # Update processing template and logic
-        self.update_proofread_template(template)
-
-    def update_proofread_template(self, template):
-        """更新处理模板"""
-        if template == "Proofreading Only":
-            self.current_processor_type = "basic"
-        elif template == "Lecture Notes":
-            self.current_processor_type = "lecture"
-        elif template == "Meeting Minutes":
-            self.current_processor_type = "meeting"
+            self.keywords_text.setPlaceholderText("Key decisions and action items...")
             
         self.logger.info(f"Processor type set to: {self.current_processor_type}")
