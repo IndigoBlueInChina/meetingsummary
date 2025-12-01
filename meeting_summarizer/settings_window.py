@@ -9,6 +9,16 @@ from utils.llamaindex_llm_factory import LLMFactory
 from utils.flexible_logger import Logger
 import traceback
 
+
+# 获取资源文件的绝对路径
+def get_resource_path(relative_path: str) -> str:
+    """获取资源文件的绝对路径，支持开发环境和打包后的环境"""
+    base_path = Path(__file__).parent
+    # 使用 as_posix() 确保返回正斜杠路径，避免反斜杠被当作转义字符
+    full_path = base_path / relative_path
+    return full_path.as_posix()
+
+
 class SettingsWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -173,17 +183,22 @@ class SettingsWindow(QDialog):
         toggle_visibility_button = QPushButton()
         toggle_visibility_button.setFixedSize(30, 30)
         toggle_visibility_button.setProperty("class", "icon")
-        toggle_visibility_button.setStyleSheet("""
-            QPushButton[class="icon"] {
+        
+        # 获取图片路径
+        eye_closed_path = get_resource_path("assets/eye-closed.png")
+        eye_open_path = get_resource_path("assets/eye-open.png")
+        
+        toggle_visibility_button.setStyleSheet(f"""
+            QPushButton[class="icon"] {{
                 border: none;
                 background-color: transparent;
-                background-image: url(assets/eye-closed.png);
+                background-image: url({eye_closed_path});
                 background-repeat: no-repeat;
                 background-position: center;
-            }
-            QPushButton[class="icon"][visible="true"] {
-                background-image: url(assets/eye-open.png);
-            }
+            }}
+            QPushButton[class="icon"][visible="true"] {{
+                background-image: url({eye_open_path});
+            }}
         """)
         toggle_visibility_button.clicked.connect(self.toggle_api_key_visibility)
         

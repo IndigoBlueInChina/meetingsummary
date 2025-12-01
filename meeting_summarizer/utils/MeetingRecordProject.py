@@ -95,35 +95,69 @@ class MeetingRecordProject:
 
     def add_audio(self, audio_file_path: str):
         """
-        Add the audio file to the project. Ensures only one audio file is allowed per project.
+        Add the audio file to the project. 
+        If an audio file already exists, it will be replaced.
         
-        :param audio_file_path: The path to the audio file (MP3, WAV).
-        :raises ValueError: If there is already an audio file in the project.
+        :param audio_file_path: The path to the audio file (MP3, WAV, Opus).
         """
+        # 如果已存在音频文件，先删除旧文件
         if self.metadata['files']['audio']:
-            raise ValueError("Only one audio file is allowed per project.")
+            old_audio = self.metadata['files']['audio']
+            if os.path.exists(old_audio):
+                print(f"[MeetingRecordProject] 警告：已存在音频文件，将被覆盖: {old_audio}")
+                try:
+                    os.remove(old_audio)
+                    print(f"[MeetingRecordProject] 已删除旧音频文件")
+                except Exception as e:
+                    print(f"[MeetingRecordProject] 删除旧音频文件失败: {str(e)}")
         
         # Copy or move the audio file to the audio directory
         audio_file_name = os.path.basename(audio_file_path)
-        os.rename(audio_file_path, os.path.join(self.audio_dir, audio_file_name))
-        self.metadata['files']['audio'] = os.path.join(self.audio_dir, audio_file_name)
+        target_path = os.path.join(self.audio_dir, audio_file_name)
+        
+        # 如果源文件和目标文件相同，无需移动
+        if os.path.abspath(audio_file_path) != os.path.abspath(target_path):
+            # 如果目标文件已存在，先删除
+            if os.path.exists(target_path):
+                os.remove(target_path)
+            os.rename(audio_file_path, target_path)
+        
+        self.metadata['files']['audio'] = target_path
         self._save_project_metadata()
+        print(f"[MeetingRecordProject] 音频文件已保存: {target_path}")
 
     def add_transcript(self, transcript_file_path: str):
         """
-        Add a transcription file (txt, docx, or pdf) to the project. Ensures only one transcription file is allowed.
+        Add a transcription file (txt, docx, or pdf) to the project. 
+        If a transcript already exists, it will be replaced.
         
         :param transcript_file_path: The path to the transcript file.
-        :raises ValueError: If there is already a transcript file in the project.
         """
+        # 如果已存在转写文件，先删除旧文件
         if self.metadata['files']['transcript']:
-            raise ValueError("Only one transcript file is allowed per project.")
+            old_transcript = self.metadata['files']['transcript']
+            if os.path.exists(old_transcript):
+                print(f"[MeetingRecordProject] 警告：已存在转写文件，将被覆盖: {old_transcript}")
+                try:
+                    os.remove(old_transcript)
+                    print(f"[MeetingRecordProject] 已删除旧转写文件")
+                except Exception as e:
+                    print(f"[MeetingRecordProject] 删除旧转写文件失败: {str(e)}")
         
         # Copy or move the transcript file to the transcript directory
         transcript_file_name = os.path.basename(transcript_file_path)
-        os.rename(transcript_file_path, os.path.join(self.transcript_dir, transcript_file_name))
-        self.metadata['files']['transcript'] = os.path.join(self.transcript_dir, transcript_file_name)
+        target_path = os.path.join(self.transcript_dir, transcript_file_name)
+        
+        # 如果源文件和目标文件相同，无需移动
+        if os.path.abspath(transcript_file_path) != os.path.abspath(target_path):
+            # 如果目标文件已存在，先删除
+            if os.path.exists(target_path):
+                os.remove(target_path)
+            os.rename(transcript_file_path, target_path)
+        
+        self.metadata['files']['transcript'] = target_path
         self._save_project_metadata()
+        print(f"[MeetingRecordProject] 转写文件已保存: {target_path}")
 
     def add_proofread_transcript(self, transcript_md_path: str):
         """

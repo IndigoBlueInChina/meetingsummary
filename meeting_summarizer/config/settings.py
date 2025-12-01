@@ -13,6 +13,8 @@ class Settings:
                 "sample_rate": 16000,  # 采样率
                 "channels": 1,  # 单声道
                 "chunk_size": 1024,  # 音频块大小
+                "format": "opus",  # 音频格式: wav, mp3, opus
+                "bitrate": "64k",  # 音频比特率（用于压缩格式）
             },
             "transcription": {
                 "language": "zh",  # 默认语言

@@ -18,6 +18,17 @@ from utils.flexible_logger import Logger
 from summary_window import SummaryWindow
 from datetime import datetime
 
+
+# 获取资源文件的绝对路径
+def get_resource_path(relative_path: str) -> str:
+    """获取资源文件的绝对路径，支持开发环境和打包后的环境"""
+    # 获取当前文件所在目录
+    base_path = Path(__file__).parent
+    # 使用 as_posix() 确保返回正斜杠路径，避免反斜杠被当作转义字符
+    full_path = base_path / relative_path
+    return full_path.as_posix()
+
+
 class SlideStackedWidget(QStackedWidget):
     def __init__(self):
         super().__init__()
@@ -148,7 +159,7 @@ class MainWindow(QMainWindow):
 
         # 添加设置图标
         settings_button = QPushButton()
-        settings_button.setIcon(QIcon("assets/settings.png"))
+        settings_button.setIcon(QIcon(get_resource_path("assets/settings.png")))
         settings_button.setFixedSize(30, 30)
         settings_button.setStyleSheet("""
             QPushButton {
@@ -179,7 +190,7 @@ class MainWindow(QMainWindow):
         record_button = self.create_feature_button(
             "录制会议",
             "开始录制",
-            "assets/record_icon.png"
+            get_resource_path("assets/record_icon.png")
         )
         record_button.clicked.connect(self.show_recording_page)
         layout.addWidget(record_button)
@@ -188,7 +199,7 @@ class MainWindow(QMainWindow):
         upload_audio_button = self.create_feature_button(
             "导入录音或文字稿",
             "选择录音文件或文字稿文件",
-            "assets/upload_audio_icon.png"
+            get_resource_path("assets/upload_audio_icon.png")
         )
         upload_audio_button.clicked.connect(self.import_audio_or_text)  # 直接打开文件选择窗口
         layout.addWidget(upload_audio_button)
@@ -197,7 +208,7 @@ class MainWindow(QMainWindow):
         history_button = self.create_feature_button(
             "查看会议记录",
             "浏览历史会议记录",
-            "assets/history_icon.png"
+            get_resource_path("assets/history_icon.png")
         )
         history_button.clicked.connect(self.show_history_page)
         layout.addWidget(history_button)

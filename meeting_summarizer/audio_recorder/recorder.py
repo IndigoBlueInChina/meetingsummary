@@ -13,9 +13,22 @@ from pathlib import Path
 import warnings
 from soundcard.mediafoundation import SoundcardRuntimeWarning
 from utils.MeetingRecordProject import MeetingRecordProject
+from config.settings import Settings
+import subprocess
 
 # 过滤掉 data discontinuity 警告
 warnings.filterwarnings("ignore", category=SoundcardRuntimeWarning, message="data discontinuity in recording")
+
+def check_ffmpeg_available():
+    """检查 ffmpeg 是否可用"""
+    try:
+        subprocess.run(['ffmpeg', '-version'], 
+                      stdout=subprocess.PIPE, 
+                      stderr=subprocess.PIPE, 
+                      check=True)
+        return True
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return False
 
 def list_audio_devices():
     # 列出所有支持录音的设备（包含虚拟声卡）
@@ -25,60 +38,85 @@ def list_audio_devices():
         print(f"{i}: {mic.name}")
     return mics
 
-def merge_wav_files(wav_files, output_file):
-    """合并多个WAV文件"""
+def merge_audio_files(audio_files, output_file, audio_format="opus", bitrate="64k"):
+    """合并多个音频文件，支持不同格式
+    
+    Args:
+        audio_files: 音频文件列表
+        output_file: 输出文件路径
+        audio_format: 输出格式 (opus, mp3, wav)
+        bitrate: 音频比特率 (仅用于压缩格式)
+    
+    Returns:
+        (success: bool, actual_output_file: str) - 成功标志和实际输出文件路径
+    """
     try:
-        if not wav_files:
-            print("没有需要合并的文件")
-            return False
-            
         print(f"\n=== 开始合并音频文件 ===")
-        print(f"需要合并的文件数量: {len(wav_files)}")
+        print(f"需要合并的文件数量: {len(audio_files)}")
         print(f"输出文件: {output_file}")
+        print(f"输出格式: {audio_format}, 比特率: {bitrate}")
         
-        # 使用第一个文件作为基础
-        print("读取第一个文件...")
-        combined = AudioSegment.from_wav(wav_files[0])
-        print(f"第一个文件长度: {len(combined)/1000:.2f}秒")
+        if not audio_files:
+            print("错误：没有文件需要合并")
+            return False, None
         
-        # 合并其余文件
-        for i, wav_file in enumerate(wav_files[1:], 1):
-            try:
-                print(f"合并第 {i+1}/{len(wav_files)} 个文件: {os.path.basename(wav_file)}")
-                segment = AudioSegment.from_wav(wav_file)
-                combined += segment
-                print(f"当前合并后长度: {len(combined)/1000:.2f}秒")
-            except Exception as e:
-                print(f"合并文件 {wav_file} 时出错: {str(e)}")
-                return False
-        
-        # 确保输出目录存在
-        os.makedirs(os.path.dirname(output_file), exist_ok=True)
-        
-        # 导出合并后的文件
-        print("正在导出合并后的文件...")
-        combined.export(output_file, format="wav")
-        print(f"音频文件合并成功: {output_file}")
-        print(f"最终文件长度: {len(combined)/1000:.2f}秒")
-        
-        # 清理临时文件
-        print("\n=== 清理临时文件 ===")
-        success = True
-        for temp_file in wav_files:
-            try:
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-                    print(f"已删除临时文件: {os.path.basename(temp_file)}")
-            except Exception as e:
-                print(f"删除临时文件 {temp_file} 失败: {str(e)}")
-                success = False
-        
-        if success:
-            print("\n=== 音频合并完成 ===")
+        # 读取第一个文件作为基础（自动检测格式）
+        first_file = audio_files[0]
+        if first_file.endswith('.wav'):
+            combined = AudioSegment.from_wav(first_file)
         else:
-            print("\n=== 音频合并完成，但部分临时文件清理失败 ===")
+            combined = AudioSegment.from_file(first_file)
+        print(f"第一个文件时长: {len(combined)/1000:.2f}秒")
         
-        return success
+        # 逐个添加其他文件
+        for i, audio_file in enumerate(audio_files[1:], 1):
+            print(f"正在添加第 {i+1} 个文件...")
+            if audio_file.endswith('.wav'):
+                audio = AudioSegment.from_wav(audio_file)
+            else:
+                audio = AudioSegment.from_file(audio_file)
+            combined += audio
+            print(f"当前总时长: {len(combined)/1000:.2f}秒")
+        
+        # 保存合并后的文件
+        print(f"正在保存为 {audio_format} 格式...")
+        
+        try:
+            export_params = {}
+            if audio_format in ['opus', 'mp3']:
+                export_params['bitrate'] = bitrate
+            if audio_format == 'opus':
+                export_params['codec'] = 'libopus'
+            
+            combined.export(output_file, format=audio_format, **export_params)
+        except FileNotFoundError:
+            # ffmpeg 不可用，回退到 WAV
+            print(f"⚠️  警告：无法保存为 {audio_format} 格式（ffmpeg 未安装）")
+            print(f"⚠️  自动保存为 WAV 格式")
+            # 修改输出文件名为 .wav
+            output_file = output_file.rsplit('.', 1)[0] + '.wav'
+            combined.export(output_file, format='wav')
+        except Exception as e:
+            # 其他错误，也回退到 WAV
+            print(f"⚠️  警告：格式转换失败: {str(e)}")
+            print(f"⚠️  自动保存为 WAV 格式")
+            output_file = output_file.rsplit('.', 1)[0] + '.wav'
+            combined.export(output_file, format='wav')
+        
+        # 删除原始分段文件
+        print("正在删除临时分段文件...")
+        for audio_file in audio_files:
+            try:
+                os.remove(audio_file)
+                print(f"已删除: {os.path.basename(audio_file)}")
+            except Exception as e:
+                print(f"删除文件 {os.path.basename(audio_file)} 失败: {str(e)}")
+        
+        print("音频文件合并成功")
+        file_size = os.path.getsize(output_file)
+        print(f"合并后文件大小: {humanize.naturalsize(file_size)}")
+        
+        return True, output_file
         
     except Exception as e:
         print(f"\n!!! 合并音频文件时发生错误 !!!")
@@ -86,7 +124,7 @@ def merge_wav_files(wav_files, output_file):
         print(f"错误信息: {str(e)}")
         import traceback
         traceback.print_exc()
-        return False
+        return False, None
 
 def format_time(seconds):
     """格式化时间为 HH:MM:SS"""
@@ -132,6 +170,29 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
     # 确保使用正确的项目目录
     if project_dir is None:
         raise ValueError("[record_audio] 未指定项目目录")
+    
+    # 从配置获取音频格式设置
+    try:
+        settings = Settings()
+        audio_format = settings.get("audio", "format") or "opus"
+        bitrate = settings.get("audio", "bitrate") or "64k"
+    except:
+        # 如果无法获取配置，使用默认值
+        audio_format = "opus"
+        bitrate = "64k"
+    
+    # 检查 ffmpeg 是否可用（非 WAV 格式需要）
+    if audio_format != "wav":
+        if not check_ffmpeg_available():
+            print(f"\n⚠️  警告：ffmpeg 未安装，无法保存 {audio_format} 格式")
+            print("⚠️  自动降级为 WAV 格式（文件较大）")
+            print("⚠️  请安装 ffmpeg 以使用压缩格式：")
+            print("    1. 运行: .\\install_ffmpeg.ps1")
+            print("    2. 或执行: choco install ffmpeg -y")
+            print("    3. 重启应用程序\n")
+            audio_format = "wav"
+    
+    print(f"[record_audio] 音频格式: {audio_format}, 比特率: {bitrate}")
     
     audio_dir = os.path.join(project_dir, "audio")
     os.makedirs(audio_dir, exist_ok=True)
@@ -312,7 +373,9 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
                             recorded_frames, 
                             base_filename, 
                             segment_count, 
-                            sample_rate
+                            sample_rate,
+                            audio_format,
+                            bitrate
                         )
                         if segment_file:
                             saved_files.append(segment_file)
@@ -348,7 +411,9 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
                     recorded_frames, 
                     base_filename, 
                     segment_count, 
-                    sample_rate
+                    sample_rate,
+                    audio_format,
+                    bitrate
                 )
                 if segment_file:
                     saved_files.append(segment_file)
@@ -360,10 +425,11 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
             # 合并所有片段
             if saved_files:
                 if len(saved_files) > 1:
-                    merged_file = f"{base_filename}_merged.wav"
-                    if merge_wav_files(saved_files, merged_file):
-                        print(f"[record_audio] 已合并所有录音片段: {merged_file}")
-                        return [merged_file], status.get_status()
+                    merged_file = f"{base_filename}_merged.{audio_format}"
+                    success, actual_file = merge_audio_files(saved_files, merged_file, audio_format, bitrate)
+                    if success and actual_file:
+                        print(f"[record_audio] 已合并所有录音片段: {actual_file}")
+                        return [actual_file], status.get_status()
                     else:
                         print("[record_audio] 合并音频文件失败，返回原始分段文件")
                         return saved_files, status.get_status()
@@ -390,10 +456,19 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
         record_audio.current_audio_data = None
         print("[record_audio] 所有标志已重置")
 
-def save_segment(frames, base_filename, segment_count, sample_rate):
-    """保存单个录音片段"""
+def save_segment(frames, base_filename, segment_count, sample_rate, audio_format="opus", bitrate="64k"):
+    """保存单个录音片段，支持多种格式
+    
+    Args:
+        frames: 音频帧数据
+        base_filename: 基础文件名
+        segment_count: 片段编号
+        sample_rate: 采样率
+        audio_format: 音频格式 (opus, mp3, wav)
+        bitrate: 比特率（用于压缩格式）
+    """
     try:
-        print(f"[save_segment] 开始保存片段 {segment_count}...")
+        print(f"[save_segment] 开始保存片段 {segment_count} (格式: {audio_format})...")
         print(f"[save_segment] 输入帧数: {len(frames)}")
         
         # 合并帧
@@ -405,19 +480,52 @@ def save_segment(frames, base_filename, segment_count, sample_rate):
         print(f"[save_segment] 转换为单声道后形状: {data.shape}")
         data = np.int16(data * 32767)
         
-        # 生成片段文件名
-        segment_filename = f"{base_filename}_part{segment_count:03d}.wav"
+        # 生成片段文件名（扩展名根据格式）
+        segment_filename = f"{base_filename}_part{segment_count:03d}.{audio_format}"
         print(f"[save_segment] 保存文件: {segment_filename}")
         
-        # 保存为WAV文件
-        import wave
-        with wave.open(segment_filename, 'wb') as wf:
+        # 先保存为临时 WAV 文件
+        temp_wav = f"{base_filename}_temp_{segment_count}.wav"
+        with wave.open(temp_wav, 'wb') as wf:
             wf.setnchannels(1)
             wf.setsampwidth(2)
             wf.setframerate(sample_rate)
             wf.writeframes(data.tobytes())
         
-        print(f"[save_segment] 成功保存片段 {segment_count}: {os.path.basename(segment_filename)}")
+        # 如果需要转换格式
+        if audio_format != 'wav':
+            try:
+                audio = AudioSegment.from_wav(temp_wav)
+                export_params = {}
+                if audio_format in ['opus', 'mp3']:
+                    export_params['bitrate'] = bitrate
+                if audio_format == 'opus':
+                    export_params['codec'] = 'libopus'
+                
+                audio.export(segment_filename, format=audio_format, **export_params)
+                
+                # 删除临时 WAV 文件
+                os.remove(temp_wav)
+                print(f"[save_segment] 已转换为 {audio_format} 格式")
+            except FileNotFoundError as e:
+                # ffmpeg 不可用，回退到 WAV
+                print(f"[save_segment] ⚠️  警告：无法转换为 {audio_format} 格式（ffmpeg 未安装）")
+                print(f"[save_segment] 自动保存为 WAV 格式")
+                segment_filename = f"{base_filename}_part{segment_count:03d}.wav"
+                os.rename(temp_wav, segment_filename)
+            except Exception as e:
+                # 其他转换错误，也回退到 WAV
+                print(f"[save_segment] ⚠️  警告：格式转换失败: {str(e)}")
+                print(f"[save_segment] 自动保存为 WAV 格式")
+                segment_filename = f"{base_filename}_part{segment_count:03d}.wav"
+                if os.path.exists(temp_wav):
+                    os.rename(temp_wav, segment_filename)
+        else:
+            # 直接重命名 WAV 文件
+            os.rename(temp_wav, segment_filename)
+        
+        file_size = os.path.getsize(segment_filename)
+        print(f"[save_segment] 成功保存片段 {segment_count}: {os.path.basename(segment_filename)} ({humanize.naturalsize(file_size)})")
         return segment_filename
     except Exception as e:
         print(f"[save_segment] 保存片段 {segment_count} 时出错: {str(e)}")

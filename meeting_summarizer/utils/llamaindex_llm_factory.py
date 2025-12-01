@@ -1,8 +1,9 @@
 from typing import Optional, Dict, Any
 from llama_index.core.llms import LLM, ChatMessage, MessageRole
-from llama_index.llms.openai import OpenAI
+# 延迟导入 OpenAI 和 OpenLLM，避免依赖问题
+# from llama_index.llms.openai import OpenAI
+# from llama_index.llms.openllm import OpenLLM
 from llama_index.llms.ollama import Ollama
-from llama_index.llms.openllm import OpenLLM
 from config.settings import Settings
 from utils.flexible_logger import Logger
 
@@ -30,6 +31,14 @@ class LLMFactory:
         **kwargs
     ) -> None:
         """Register OpenAI provider"""
+        try:
+            # 延迟导入
+            from llama_index.llms.openai import OpenAI
+        except ImportError as e:
+            self.logger.error(f"Failed to import OpenAI: {str(e)}")
+            self.logger.error("Please install compatible versions: pip install openai==1.12.0 llama-index==0.10.17")
+            raise ImportError("OpenAI provider is not available. Please check dependencies.")
+        
         self.logger.info("Registering OpenAI provider")
         api_key = api_key or self.llm_config.get("api_key")
         model = model or self.llm_config.get("model_name", "gpt-3.5-turbo")
@@ -58,6 +67,13 @@ class LLMFactory:
         **kwargs
     ) -> None:
         """Register DeepSeek provider using OpenLLM"""
+        try:
+            # 延迟导入
+            from llama_index.llms.openllm import OpenLLM
+        except ImportError as e:
+            self.logger.error(f"Failed to import OpenLLM: {str(e)}")
+            raise ImportError("OpenLLM provider is not available. Please check dependencies.")
+        
         self.logger.info("Registering DeepSeek provider")
         api_key = api_key or self.llm_config.get("api_key")
         model = model or self.llm_config.get("model_name", "deepseek-chat")
@@ -176,6 +192,13 @@ class LLMFactory:
             logger.info(f"Creating LLM instance for provider: {provider_type}")
             
             if provider_type == "openai":
+                try:
+                    from llama_index.llms.openai import OpenAI
+                except ImportError as e:
+                    logger.error(f"Failed to import OpenAI: {str(e)}")
+                    logger.error("Please install compatible versions: pip install openai==1.12.0 llama-index==0.10.17")
+                    raise ImportError("OpenAI provider is not available. Please check dependencies.")
+                
                 api_key = llm_config.get("api_key")
                 if not api_key:
                     raise ValueError("OpenAI API key is required")
@@ -195,6 +218,12 @@ class LLMFactory:
                 )
                 
             elif provider_type == "deepseek":
+                try:
+                    from llama_index.llms.openllm import OpenLLM
+                except ImportError as e:
+                    logger.error(f"Failed to import OpenLLM: {str(e)}")
+                    raise ImportError("OpenLLM provider is not available. Please check dependencies.")
+                
                 api_key = llm_config.get("api_key")
                 if not api_key:
                     raise ValueError("DeepSeek API key is required")

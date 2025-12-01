@@ -1,16 +1,77 @@
 import sys
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                             QLabel, QComboBox)
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QFont
 import pyqtgraph as pg
 from datetime import datetime
-import threading
 import time
 from audio_recorder.recorder import record_audio, list_audio_devices
 from utils.MeetingRecordProject import MeetingRecordProject
 import os
 from utils.flexible_logger import Logger
+from typing import List, Optional
+from pathlib import Path
+
+
+# 获取资源文件的绝对路径
+def get_resource_path(relative_path: str) -> str:
+    """获取资源文件的绝对路径，支持开发环境和打包后的环境"""
+    base_path = Path(__file__).parent
+    # 使用 as_posix() 确保返回正斜杠路径，避免反斜杠被当作转义字符
+    full_path = base_path / relative_path
+    return full_path.as_posix()
+
+
+class RecordingThread(QThread):
+    """录音线程，使用 QThread 支持信号/槽机制"""
+    # 信号定义
+    recording_finished = pyqtSignal(list, dict)  # 录音完成信号：(音频文件列表, 状态信息)
+    recording_error = pyqtSignal(str)  # 录音错误信号
+    
+    def __init__(self, device_index: int, project_manager, parent=None):
+        super().__init__(parent)
+        self.device_index = device_index
+        self.project_manager = project_manager
+        self.logger = Logger(name="RecordingThread", console_output=True, file_output=True, log_level="DEBUG")
+    
+    def run(self):
+        """线程执行函数"""
+        try:
+            print("\n=== [RecordingThread] 开始录音线程 ===")
+            
+            # 使用 project_manager 获取项目目录
+            result = record_audio(
+                device_index=self.device_index,
+                sample_rate=44100,
+                segment_duration=300,
+                project_dir=self.project_manager.project_dir
+            )
+            
+            if isinstance(result, tuple) and len(result) == 2:
+                audio_files, status = result
+                if audio_files and isinstance(audio_files, list):
+                    print(f"[RecordingThread] 录音完成，文件: {audio_files}")
+                    # 发送完成信号
+                    self.recording_finished.emit(audio_files, status)
+                else:
+                    error_msg = "录音函数未返回有效的文件路径列表"
+                    print(f"[RecordingThread] 错误：{error_msg}")
+                    self.recording_error.emit(error_msg)
+            else:
+                error_msg = "录音函数返回值格式不正确"
+                print(f"[RecordingThread] 错误：{error_msg}")
+                self.recording_error.emit(error_msg)
+                
+        except Exception as e:
+            error_msg = f"录音线程发生错误: {str(e)}"
+            print(error_msg)
+            import traceback
+            traceback.print_exc()
+            self.recording_error.emit(error_msg)
+        finally:
+            print("[RecordingThread] 录音线程结束")
+
 
 class RecordingWidget(QWidget):
     def __init__(self):
@@ -25,9 +86,10 @@ class RecordingWidget(QWidget):
         self.is_recording = False
         self.is_paused = False
         self.start_time = None
-        self.recording_thread = None
+        self.recording_thread: Optional[RecordingThread] = None
         self.available_devices = []
         self.project_manager = None
+        self.audio_files: Optional[List[str]] = None
         
         # 初始化波形图数据
         self.waveform_data = []
@@ -157,39 +219,42 @@ class RecordingWidget(QWidget):
         
         if not enabled:
             # 禁用状态
-            self.mic_button.setStyleSheet(base_style + """
-                QPushButton {
+            mic_disabled_path = get_resource_path("assets/mic_disabled.png")
+            self.mic_button.setStyleSheet(base_style + f"""
+                QPushButton {{
                     background-color: #CCCCCC;
-                    background-image: url(assets/mic_disabled.png);
+                    background-image: url({mic_disabled_path});
                     background-repeat: no-repeat;
                     background-position: center;
-                }
+                }}
             """)
         elif checked:
             # 启用状态
-            self.mic_button.setStyleSheet(base_style + """
-                QPushButton {
+            mic_on_path = get_resource_path("assets/mic_on.png")
+            self.mic_button.setStyleSheet(base_style + f"""
+                QPushButton {{
                     background-color: #33CCFF;
-                    background-image: url(assets/mic_on.png);
+                    background-image: url({mic_on_path});
                     background-repeat: no-repeat;
                     background-position: center;
-                }
-                QPushButton:hover {
+                }}
+                QPushButton:hover {{
                     background-color: #2CB5E8;
-                }
+                }}
             """)
         else:
             # 禁用状态
-            self.mic_button.setStyleSheet(base_style + """
-                QPushButton {
+            mic_off_path = get_resource_path("assets/mic_off.png")
+            self.mic_button.setStyleSheet(base_style + f"""
+                QPushButton {{
                     background-color: #EEEEEE;
-                    background-image: url(assets/mic_off.png);
+                    background-image: url({mic_off_path});
                     background-repeat: no-repeat;
                     background-position: center;
-                }
-                QPushButton:hover {
+                }}
+                QPushButton:hover {{
                     background-color: #E0E0E0;
-                }
+                }}
             """)
 
     def toggle_microphone(self):
@@ -297,42 +362,19 @@ class RecordingWidget(QWidget):
             self.stop_button.setEnabled(True)
             self.record_button.setText("暂停")
             
-            # 开始录音线程
-            def record_thread_func():
-                try:
-                    print("\n=== 开始录音线程 ===")
-                    # 使用 project_manager 获取项目目录
-                    result = record_audio(
-                        device_index=device_index,
-                        sample_rate=44100,
-                        segment_duration=300,
-                        project_dir=self.project_manager.project_dir  # 传入项目目录
-                    )
-                    
-                    if isinstance(result, tuple) and len(result) == 2:
-                        audio_files, status = result
-                        if audio_files and isinstance(audio_files, list):
-                            # 通过 project_manager 设置录音文件
-                            self.project_manager.record_file = audio_files[0]
-                            self.audio_files = audio_files  # 保留这个用于兼容性
-                            print(f"录音完成，文件已保存到项目: {self.project_manager.project_name}")
-                        else:
-                            print("错误：录音函数未返回有效的文件路径列表")
-                            self.audio_files = None
-                    else:
-                        print("错误：录音函数返回值格式不正确")
-                        self.audio_files = None
-                        
-                except Exception as e:
-                    print(f"录音线程发生错误: {str(e)}")
-                    import traceback
-                    traceback.print_exc()
-                    self.audio_files = None
-                finally:
-                    print("录音线程结束")
+            # 创建并启动录音线程
+            self.recording_thread = RecordingThread(
+                device_index=device_index,
+                project_manager=self.project_manager
+            )
             
-            self.recording_thread = threading.Thread(target=record_thread_func)
+            # 连接信号
+            self.recording_thread.recording_finished.connect(self.on_recording_finished)
+            self.recording_thread.recording_error.connect(self.on_recording_error)
+            
+            # 启动线程
             self.recording_thread.start()
+            print("录音线程已启动")
             
             # 启动录音时间计时器
             self.start_time = time.time()
@@ -389,6 +431,7 @@ class RecordingWidget(QWidget):
             # 禁用按钮，防止重复点击
             self.stop_button.setEnabled(False)
             self.record_button.setEnabled(False)
+            self.status_label.setText("正在停止录音，请稍候...")
             print("[RecordingWidget] 已禁用录音按钮")
             
             # 设置停止标志
@@ -396,45 +439,15 @@ class RecordingWidget(QWidget):
             record_audio.stop_flag = True
             self.is_recording = False
             self.is_paused = False
-            print(f"[RecordingWidget] 停止标志已设置 - stop_flag: {record_audio.stop_flag}, is_recording: {self.is_recording}, is_paused: {self.is_paused}")
-            
-            # 等待录音线程结束
-            if self.recording_thread and self.recording_thread.is_alive():
-                print("[RecordingWidget] 等待录音线程结束...")
-                print(f"[RecordingWidget] 线程状态 - 是否存活: {self.recording_thread.is_alive()}, 是否守护线程: {self.recording_thread.daemon}")
-                self.recording_thread.join(timeout=2.0)
-                
-                if self.recording_thread.is_alive():
-                    print("[RecordingWidget] 录音线程仍在运行，强制终止...")
-                    print(f"[RecordingWidget] 线程状态 - 是否存活: {self.recording_thread.is_alive()}, 是否守护线程: {self.recording_thread.daemon}")
-                    # 再次等待一小段时间
-                    self.recording_thread.join(timeout=1.0)
-                    print(f"[RecordingWidget] 第二次等待后线程状态 - 是否存活: {self.recording_thread.is_alive()}")
-            else:
-                print("[RecordingWidget] 没有活动的录音线程")
+            print(f"[RecordingWidget] 停止标志已设置 - stop_flag: {record_audio.stop_flag}")
             
             # 停止计时器
             self.timer.stop()
             print("[RecordingWidget] 计时器已停止")
             
-            # 重置录音相关标志
-            record_audio.stop_flag = False
-            record_audio.pause_flag = False
-            record_audio.use_microphone = False
-            print("[RecordingWidget] 已重置所有录音标志")
-            
-            # 检查是否有音频文件生成
-            if hasattr(self, 'audio_files') and self.audio_files:
-                print(f"[RecordingWidget] 录音完成，生成的文件: {self.audio_files}")
-                # 切换到音频转文字页面
-                QTimer.singleShot(500, self.switch_to_transcribe_page)
-            else:
-                print("[RecordingWidget] 错误：未找到生成的音频文件")
-                # 重置按钮状态
-                self.stop_button.setEnabled(True)
-                self.record_button.setEnabled(True)
-                self.record_button.setText("开始录音")
-                print("[RecordingWidget] 已重置按钮状态")
+            # 注意：不在这里等待线程或重置标志
+            # 等待录音线程通过信号通知完成
+            print("[RecordingWidget] 等待录音线程完成（包括音频合并）...")
             
         except Exception as e:
             print(f"[RecordingWidget] 停止录音时发生错误: {str(e)}")
@@ -444,6 +457,60 @@ class RecordingWidget(QWidget):
             self.stop_button.setEnabled(True)
             self.record_button.setEnabled(True)
             self.record_button.setText("开始录音")
+            self.status_label.setText("停止录音时发生错误")
+    
+    def on_recording_finished(self, audio_files: List[str], status: dict):
+        """录音完成的回调函数（由录音线程信号触发）"""
+        try:
+            print(f"\n=== [RecordingWidget] 收到录音完成信号 ===")
+            print(f"[RecordingWidget] 音频文件: {audio_files}")
+            print(f"[RecordingWidget] 状态信息: {status}")
+            
+            # 保存音频文件信息
+            self.audio_files = audio_files
+            
+            # 通过 project_manager 设置录音文件
+            if audio_files and len(audio_files) > 0:
+                self.project_manager.record_file = audio_files[0]
+                print(f"[RecordingWidget] 文件已保存到项目: {self.project_manager.project_name}")
+            
+            # 重置录音相关标志（在线程完成后重置是安全的）
+            record_audio.stop_flag = False
+            record_audio.pause_flag = False
+            record_audio.use_microphone = False
+            print("[RecordingWidget] 已重置所有录音标志")
+            
+            # 更新状态
+            self.status_label.setText("录音完成，准备开始转写...")
+            
+            # 切换到音频转文字页面
+            QTimer.singleShot(500, self.switch_to_transcribe_page)
+            
+        except Exception as e:
+            print(f"[RecordingWidget] 处理录音完成信号时发生错误: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            self.on_recording_error(str(e))
+    
+    def on_recording_error(self, error_msg: str):
+        """录音错误的回调函数（由录音线程信号触发）"""
+        print(f"\n=== [RecordingWidget] 收到录音错误信号 ===")
+        print(f"[RecordingWidget] 错误信息: {error_msg}")
+        
+        # 重置录音相关标志
+        record_audio.stop_flag = False
+        record_audio.pause_flag = False
+        record_audio.use_microphone = False
+        
+        # 重置按钮状态
+        self.stop_button.setEnabled(True)
+        self.record_button.setEnabled(True)
+        self.record_button.setText("开始录音")
+        self.status_label.setText(f"录音失败: {error_msg}")
+        
+        # 显示错误提示
+        from PyQt6.QtWidgets import QMessageBox
+        QMessageBox.warning(self, "录音错误", f"录音过程中发生错误：\n{error_msg}")
 
     def switch_to_transcribe_page(self):
         """切换到音频转文字页面"""
@@ -565,17 +632,20 @@ class RecordingWidget(QWidget):
                 self.is_recording = False
                 self.is_paused = False
                 
-                # 等待录音线程结束
-                if hasattr(self, 'recording_thread') and self.recording_thread and self.recording_thread.is_alive():
+                # 等待录音线程结束（使用 QThread 的方法）
+                if hasattr(self, 'recording_thread') and self.recording_thread and self.recording_thread.isRunning():
                     print("等待录音线程结束...")
-                    self.recording_thread.join(timeout=2.0)
-                    
-                    if self.recording_thread.is_alive():
-                        print("录音线程未能正常结束")
+                    self.recording_thread.quit()
+                    if not self.recording_thread.wait(5000):  # 等待5秒
+                        print("录音线程未能正常结束，强制终止")
+                        self.recording_thread.terminate()
+                        self.recording_thread.wait()
             
             # 停止计时器
             if hasattr(self, 'timer'):
                 self.timer.stop()
+            if hasattr(self, 'plot_timer'):
+                self.plot_timer.stop()
             
             # 重置所有标志
             record_audio.stop_flag = False
