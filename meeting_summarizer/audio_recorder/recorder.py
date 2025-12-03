@@ -245,6 +245,7 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
     frame_count = 0
     frames_per_segment = int(segment_duration * sample_rate)
     saved_files = []
+    final_output_files = []  # 跟踪最终输出文件（合并后的文件或原始片段）
     
     print("[record_audio] 初始化状态更新线程...")
     status = RecordingStatus()
@@ -429,22 +430,31 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
                     success, actual_file = merge_audio_files(saved_files, merged_file, audio_format, bitrate)
                     if success and actual_file:
                         print(f"[record_audio] 已合并所有录音片段: {actual_file}")
-                        return [actual_file], status.get_status()
+                        final_output_files = [actual_file]
+                        return final_output_files, status.get_status()
                     else:
                         print("[record_audio] 合并音频文件失败，返回原始分段文件")
-                        return saved_files, status.get_status()
+                        final_output_files = saved_files
+                        return final_output_files, status.get_status()
                 else:
                     print(f"[record_audio] 只有一个录音片段，无需合并")
-                    return saved_files, status.get_status()
+                    final_output_files = saved_files
+                    return final_output_files, status.get_status()
             
             print("[record_audio] 没有录音文件需要处理")
-            return [], status.get_status()
+            final_output_files = []
+            return final_output_files, status.get_status()
             
     except Exception as e:
         print(f"[record_audio] 录音过程中发生错误: {str(e)}")
         import traceback
         traceback.print_exc()
-        if saved_files:
+        # 如果已经成功合并文件，返回合并后的文件；否则返回原始片段
+        if final_output_files:
+            print(f"[record_audio] 错误发生在合并之后，返回已合并的文件: {final_output_files}")
+            return final_output_files, status.get_status()
+        elif saved_files:
+            print(f"[record_audio] 错误发生在合并之前，返回原始片段: {saved_files}")
             return saved_files, status.get_status()
         return [], status.get_status()
     finally:
