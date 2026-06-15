@@ -1,5 +1,6 @@
 import os
 import json
+import shutil
 from typing import List
 from datetime import datetime
 
@@ -100,27 +101,29 @@ class MeetingRecordProject:
         
         :param audio_file_path: The path to the audio file (MP3, WAV, Opus).
         """
-        # 如果已存在音频文件，先删除旧文件
-        if self.metadata['files']['audio']:
-            old_audio = self.metadata['files']['audio']
-            if os.path.exists(old_audio):
-                print(f"[MeetingRecordProject] 警告：已存在音频文件，将被覆盖: {old_audio}")
-                try:
-                    os.remove(old_audio)
-                    print(f"[MeetingRecordProject] 已删除旧音频文件")
-                except Exception as e:
-                    print(f"[MeetingRecordProject] 删除旧音频文件失败: {str(e)}")
-        
-        # Copy or move the audio file to the audio directory
+        def _norm_path(path: str) -> str:
+            return os.path.normcase(os.path.abspath(path))
+
         audio_file_name = os.path.basename(audio_file_path)
         target_path = os.path.join(self.audio_dir, audio_file_name)
+        src_norm = _norm_path(audio_file_path)
+        target_norm = _norm_path(target_path)
+        old_audio = self.metadata.get("files", {}).get("audio", "")
+        old_norm = _norm_path(old_audio) if old_audio else ""
+
+        if old_audio and old_norm != target_norm and os.path.exists(old_audio):
+            print(f"[MeetingRecordProject] 警告：已存在音频文件，将被覆盖: {old_audio}")
+            try:
+                os.remove(old_audio)
+                print(f"[MeetingRecordProject] 已删除旧音频文件")
+            except Exception as e:
+                print(f"[MeetingRecordProject] 删除旧音频文件失败: {str(e)}")
         
         # 如果源文件和目标文件相同，无需移动
-        if os.path.abspath(audio_file_path) != os.path.abspath(target_path):
-            # 如果目标文件已存在，先删除
+        if src_norm != target_norm:
             if os.path.exists(target_path):
                 os.remove(target_path)
-            os.rename(audio_file_path, target_path)
+            shutil.move(audio_file_path, target_path)
         
         self.metadata['files']['audio'] = target_path
         self._save_project_metadata()
@@ -133,27 +136,29 @@ class MeetingRecordProject:
         
         :param transcript_file_path: The path to the transcript file.
         """
-        # 如果已存在转写文件，先删除旧文件
-        if self.metadata['files']['transcript']:
-            old_transcript = self.metadata['files']['transcript']
-            if os.path.exists(old_transcript):
-                print(f"[MeetingRecordProject] 警告：已存在转写文件，将被覆盖: {old_transcript}")
-                try:
-                    os.remove(old_transcript)
-                    print(f"[MeetingRecordProject] 已删除旧转写文件")
-                except Exception as e:
-                    print(f"[MeetingRecordProject] 删除旧转写文件失败: {str(e)}")
-        
-        # Copy or move the transcript file to the transcript directory
+        def _norm_path(path: str) -> str:
+            return os.path.normcase(os.path.abspath(path))
+
         transcript_file_name = os.path.basename(transcript_file_path)
         target_path = os.path.join(self.transcript_dir, transcript_file_name)
+        src_norm = _norm_path(transcript_file_path)
+        target_norm = _norm_path(target_path)
+        old_transcript = self.metadata.get("files", {}).get("transcript", "")
+        old_norm = _norm_path(old_transcript) if old_transcript else ""
+
+        if old_transcript and old_norm != target_norm and os.path.exists(old_transcript):
+            print(f"[MeetingRecordProject] 警告：已存在转写文件，将被覆盖: {old_transcript}")
+            try:
+                os.remove(old_transcript)
+                print(f"[MeetingRecordProject] 已删除旧转写文件")
+            except Exception as e:
+                print(f"[MeetingRecordProject] 删除旧转写文件失败: {str(e)}")
         
         # 如果源文件和目标文件相同，无需移动
-        if os.path.abspath(transcript_file_path) != os.path.abspath(target_path):
-            # 如果目标文件已存在，先删除
+        if src_norm != target_norm:
             if os.path.exists(target_path):
                 os.remove(target_path)
-            os.rename(transcript_file_path, target_path)
+            shutil.move(transcript_file_path, target_path)
         
         self.metadata['files']['transcript'] = target_path
         self._save_project_metadata()

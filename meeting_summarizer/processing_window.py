@@ -57,9 +57,9 @@ class ProcessingThread(QThread):
             # 保存转写文本
             with open(transcript_file, "w", encoding="utf-8") as f:
                 f.write(transcript_text.strip())
-                
-            self.finished.emit(True, "处理完成")
+            
             self.project_manager.add_transcript(transcript_file)
+            self.finished.emit(True, "处理完成")
             
         except Exception as e:
             self.logger.error(f"处理过程中发生错误: {str(e)}")
