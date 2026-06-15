@@ -158,19 +158,30 @@ class ProcessingWidget(QWidget):
             print("\n=== 开始音频处理 ===")
             if not self.project_manager:
                 raise ValueError("未设置项目管理器")
-            
+
+            # 防止重入:已经在跑或已完成,就不再启动新线程
+            if self.processing_thread and self.processing_thread.isRunning():
+                print("[start_processing] 处理线程已在运行,忽略重复调用")
+                return
+            if self.is_processing:
+                print("[start_processing] 已处于处理状态,忽略重复调用")
+                return
+
             audio_file = self.project_manager.get_audio_filename()
             if not audio_file:
                 raise ValueError("未找到音频文件")
-            
+
+            self.is_processing = True
+
             # 开始处理线程
             self.processing_thread = ProcessingThread(self.project_manager)
             self.processing_thread.progress_updated.connect(self.update_progress)
             self.processing_thread.finished.connect(self.processing_finished)
             self.processing_thread.start()
             print("处理线程已启动")
-            
+
         except Exception as e:
+            self.is_processing = False
             print(f"启动处理时发生错误: {str(e)}")
             import traceback
             traceback.print_exc()
@@ -190,6 +201,7 @@ class ProcessingWidget(QWidget):
     
     def processing_finished(self, success, result):
         """Processing completion callback"""
+        self.is_processing = False
         if success:
             self.status_label.setText("处理完成")
             self.time_label.setText("正在跳转到转写页面...")

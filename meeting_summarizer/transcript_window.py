@@ -288,7 +288,11 @@ class TranscriptWindow(QWidget):
         button_progress_layout = QVBoxLayout()
         button_progress_layout.setSpacing(10)
         
-        # 校对按钮
+        # 按钮行:主操作"生成" + 次操作"导出 TXT"
+        button_row = QHBoxLayout()
+        button_row.setSpacing(10)
+
+        # 校对按钮(主操作)
         self.proofread_button = QPushButton("生成")
         self.proofread_button.setStyleSheet("""
             QPushButton {
@@ -307,7 +311,31 @@ class TranscriptWindow(QWidget):
             }
         """)
         self.proofread_button.clicked.connect(self.on_proofread_clicked)
-        
+
+        # 导出 TXT 按钮(次操作,白底蓝边)
+        self.export_txt_button = QPushButton("导出 TXT")
+        self.export_txt_button.setStyleSheet("""
+            QPushButton {
+                background-color: white;
+                color: #33CCFF;
+                border: 1px solid #33CCFF;
+                border-radius: 5px;
+                padding: 15px 30px;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #E6F7FF;
+            }
+            QPushButton:disabled {
+                color: #CCCCCC;
+                border-color: #CCCCCC;
+            }
+        """)
+        self.export_txt_button.clicked.connect(self.on_export_txt_clicked)
+
+        button_row.addWidget(self.proofread_button)
+        button_row.addWidget(self.export_txt_button)
+
         # 进度条
         self.progress_bar = QProgressBar()
         self.progress_bar.setStyleSheet("""
@@ -325,8 +353,8 @@ class TranscriptWindow(QWidget):
         """)
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(False)  # 隐藏进度文本
-        
-        button_progress_layout.addWidget(self.proofread_button)
+
+        button_progress_layout.addLayout(button_row)
         button_progress_layout.addWidget(self.progress_bar)
         
         bottom_layout.addLayout(button_progress_layout)
@@ -355,19 +383,72 @@ class TranscriptWindow(QWidget):
         try:
             if not self.project_manager:
                 raise ValueError("Project manager not set")
-            
+
             transcript_file = self.project_manager.get_transcript_filename()
             if not transcript_file or not os.path.exists(transcript_file):
                 self.transcript_text.setText("Transcript file not found")
                 return
-            
+
             with open(transcript_file, 'r', encoding='utf-8') as f:
                 transcript_text = f.read()
                 self.transcript_text.setPlainText(transcript_text)
-            
+
         except Exception as e:
             self.logger.error(f"Error loading transcript file: {str(e)}")
             traceback.print_exc()
+
+    def on_export_txt_clicked(self):
+        """导出当前转写文本为 .txt 文件,便于归档"""
+        try:
+            text = self.transcript_text.toPlainText()
+            if not text.strip():
+                QMessageBox.warning(self, "导出失败", "当前没有可导出的转写内容")
+                return
+
+            # 默认文件名:用项目名(或时间戳)作为前缀
+            if self.project_manager and getattr(self.project_manager, "project_name", None):
+                default_name = f"{self.project_manager.project_name}_转写.txt"
+            else:
+                from datetime import datetime
+                default_name = datetime.now().strftime("%Y%m%d_%H%M") + "_转写.txt"
+
+            # 用项目目录作为初始目录(若存在)
+            start_dir = ""
+            if self.project_manager:
+                try:
+                    start_dir = self.project_manager.project_dir
+                except Exception:
+                    start_dir = ""
+            default_path = os.path.join(start_dir, default_name) if start_dir else default_name
+
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "导出转写为 TXT",
+                default_path,
+                "文本文件 (*.txt);;所有文件 (*)"
+            )
+
+            if not file_path:
+                self.logger.info("用户取消了 TXT 导出")
+                return
+
+            # 没写后缀就补一个
+            if not os.path.splitext(file_path)[1]:
+                file_path += ".txt"
+
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(text)
+
+            self.logger.info(f"已导出转写文本到: {file_path}")
+            QMessageBox.information(
+                self,
+                "导出成功",
+                f"转写文本已保存到:\n{file_path}"
+            )
+        except Exception as e:
+            self.logger.error(f"导出 TXT 失败: {str(e)}")
+            traceback.print_exc()
+            QMessageBox.warning(self, "导出失败", f"保存文件时出错:\n{str(e)}")
     
     def on_proofread_clicked(self):
         """处理校对按钮点击事件"""

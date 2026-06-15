@@ -11,3 +11,5 @@ transcripts/*.*
 /meeting_summarizer/utils/__pycache__
 /meeting_summarizer/config/__pycache__
 /meeting_summarizer/build
+/MeetingSummarizer.app
+/meeting_summarizer.log

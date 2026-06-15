@@ -11,13 +11,18 @@ import psutil
 import humanize
 from pathlib import Path
 import warnings
-from soundcard.mediafoundation import SoundcardRuntimeWarning
+import sys
 from utils.MeetingRecordProject import MeetingRecordProject
 from config.settings import Settings
 import subprocess
 
-# 过滤掉 data discontinuity 警告
-warnings.filterwarnings("ignore", category=SoundcardRuntimeWarning, message="data discontinuity in recording")
+# 过滤掉 data discontinuity 警告 (仅在 Windows 上可用 — soundcard.mediafoundation 是 Windows 后端)
+if sys.platform == "win32":
+    try:
+        from soundcard.mediafoundation import SoundcardRuntimeWarning
+        warnings.filterwarnings("ignore", category=SoundcardRuntimeWarning, message="data discontinuity in recording")
+    except Exception:
+        pass
 
 def check_ffmpeg_available():
     """检查 ffmpeg 是否可用"""
@@ -37,6 +42,25 @@ def list_audio_devices():
     for i, mic in enumerate(mics):
         print(f"{i}: {mic.name}")
     return mics
+
+
+def get_supported_blocksize(mic, sample_rate=44100, preferred=1024):
+    """选择一个设备实际接受的 blocksize。
+
+    不同后端对 blocksize 的上限差异很大(Windows WASAPI 可达 4096+,
+    macOS CoreAudio 的某些输入设备上限只有 128)。依次尝试
+    preferred -> 512 -> 256 -> 128 -> 64,直到设备接受为止。
+    """
+    candidates = [preferred, 512, 256, 128, 64]
+    for bs in candidates:
+        try:
+            with mic.recorder(samplerate=sample_rate, blocksize=bs) as _r:
+                return bs
+        except Exception as e:
+            print(f"[get_supported_blocksize] 设备 {mic.name} 拒绝 blocksize={bs}: {e}")
+            continue
+    # 全部失败,让上层报错
+    raise TypeError(f"设备 {mic.name} 在所有尝试的 blocksize 下都无法初始化")
 
 def merge_audio_files(audio_files, output_file, audio_format="opus", bitrate="64k"):
     """合并多个音频文件，支持不同格式
@@ -254,7 +278,9 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
     print(f"After: [record_audio] 状态更新 - duration: {status.duration}, segments: {status.saved_segments}, total_size: {status.total_size}")    
 
     try:
-        with mic.recorder(samplerate=sample_rate, blocksize=4096) as recorder:  
+        blocksize = get_supported_blocksize(mic, sample_rate)
+        print(f"[record_audio] 使用 blocksize: {blocksize}")
+        with mic.recorder(samplerate=sample_rate, blocksize=blocksize) as recorder:
             print("[record_audio] 录音设备初始化成功")
             mic_recorder = None
             last_mic_state = False  # 记录上一次麦克风状态
@@ -288,8 +314,9 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
                             break
                         mic = mics[device_index] if device_index is not None else mics[0]
                         print(f"[record_audio] 切换到新设备: {mic.name}")
-                        # 初始化新的录音设备
-                        recorder = mic.recorder(samplerate=sample_rate, blocksize=4096)
+                        # 初始化新的录音设备(用自适应 blocksize)
+                        new_bs = get_supported_blocksize(mic, sample_rate)
+                        recorder = mic.recorder(samplerate=sample_rate, blocksize=new_bs)
                         recorder.__enter__()
                         last_device = device_index
                         print("[record_audio] 新设备初始化成功")
@@ -305,7 +332,8 @@ def record_audio(device_index=None, sample_rate=44100, segment_duration=300, pro
                                 if mic_devices:
                                     mic_device = mic_devices[0]
                                     print(f"[record_audio] 正在初始化麦克风: {mic_device.name}")
-                                    mic_recorder = mic_device.recorder(samplerate=sample_rate, blocksize=2048)
+                                    mic_bs = get_supported_blocksize(mic_device, sample_rate)
+                                    mic_recorder = mic_device.recorder(samplerate=sample_rate, blocksize=mic_bs)
                                     mic_recorder.__enter__()
                                     print("[record_audio] 麦克风已启用并初始化成功")
                                 else:

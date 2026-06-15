@@ -272,37 +272,45 @@ class RecordingWidget(QWidget):
             # 获取所有设备
             devices = list_audio_devices()
             print(f"[RecordingWidget] 获取到的设备列表: {devices}")
-            
-            # 根据设备名称前缀区分麦克风和其他录音设备
-            mic_devices = [dev for dev in devices if str(dev).startswith('<Microphone')]
-            other_devices = [dev for dev in devices if str(dev).startswith('<Loopback')]
-            
+
+            # 区分麦克风与系统声音(loopback)设备
+            # macOS 不支持 loopback,只会返回麦克风;Windows/Linux 可同时返回两者
+            mic_devices = [dev for dev in devices if not getattr(dev, 'isloopback', False)]
+            loopback_devices = [dev for dev in devices if getattr(dev, 'isloopback', False)]
+
             print(f"[RecordingWidget] 麦克风设备: {mic_devices}")
-            print(f"[RecordingWidget] 其他录音设备: {other_devices}")
-            
-            # 更新可用设备列表
-            self.available_devices = other_devices
+            print(f"[RecordingWidget] 系统声音(loopback)设备: {loopback_devices}")
+
+            # 把所有可用设备都加进下拉框,带类型标签
+            # 顺序:系统声音优先(用于录制会议远端声音),然后麦克风
+            ordered = loopback_devices + mic_devices
+            self.available_devices = ordered
             self.device_combo.clear()
-            
-            # 添加录音设备到下拉框
-            for i, dev in enumerate(self.available_devices):
-                self.device_combo.addItem(f"{i}: {dev.name}")
-            
-            # 检查是否有麦克风设备
+
+            if not ordered:
+                self.device_combo.addItem("未找到录音设备")
+                self.record_button.setEnabled(False)
+            else:
+                for i, dev in enumerate(ordered):
+                    is_loopback = getattr(dev, 'isloopback', False)
+                    prefix = "[系统声音]" if is_loopback else "[麦克风]"
+                    self.device_combo.addItem(f"{prefix} {dev.name}", userData=i)
+
+            # 检查是否有麦克风设备 — 决定麦克风开关是否可用
             if mic_devices:
                 self.mic_button.setEnabled(True)
-                print("[RecordingWidget] 检测到麦克风设备，启用麦克风按钮")
+                print("[RecordingWidget] 检测到麦克风设备,启用麦克风按钮")
             else:
                 self.mic_button.setEnabled(False)
                 self.mic_button.setChecked(False)
-                print("[RecordingWidget] 未检测到麦克风设备，禁用麦克风按钮")
-            
+                print("[RecordingWidget] 未检测到麦克风设备,禁用麦克风按钮")
+
             self.update_mic_button_style()
-            
+
             # 添加设备切换的信号处理
             self.device_combo.currentIndexChanged.connect(self.on_device_changed)
             print("[RecordingWidget] 已加载可用录音设备")
-            
+
         except Exception as e:
             print(f"[RecordingWidget] 加载录音设备时出错: {str(e)}")
             import traceback
@@ -315,9 +323,12 @@ class RecordingWidget(QWidget):
         try:
             print(f"[RecordingWidget] 设备切换: {index}")
             if self.is_recording:
-                # 如果正在录音，更新录音设备索引
-                record_audio.device_index = index
-                print(f"[RecordingWidget] 已更新录音设备索引: {index}")
+                # 用 userData 取出 soundcard 原始索引(下拉框顺序可能与原列表不同)
+                user_data = self.device_combo.itemData(index)
+                if user_data is None:
+                    user_data = index
+                record_audio.device_index = user_data
+                print(f"[RecordingWidget] 已更新录音设备索引: {user_data}")
         except Exception as e:
             print(f"[RecordingWidget] 切换设备时出错: {str(e)}")
 
@@ -347,11 +358,13 @@ class RecordingWidget(QWidget):
             record_audio.stop_flag = False
             record_audio.pause_flag = False
             
-            # 获取选中的设备索引
-            device_index = self.device_combo.currentIndex()
-            if device_index < 0:
+            # 获取选中的设备索引(用 userData 取出 soundcard 原始索引)
+            combo_index = self.device_combo.currentIndex()
+            if combo_index < 0 or not self.available_devices:
                 print("错误：未选择录音设备")
                 return
+            user_data = self.device_combo.itemData(combo_index)
+            device_index = user_data if user_data is not None else combo_index
             
             # 获取是否启用麦克风
             record_audio.use_microphone = self.mic_button.isChecked()
@@ -531,13 +544,10 @@ class RecordingWidget(QWidget):
                 # 更新 processing_widget 的 project_manager
                 main_window.processing_widget.set_project_manager(self.project_manager)
                 
-                # 切换到处理页面
+                # 切换到处理页面(show_processing_page 内部会调用 start_processing,
+                # 不要再手动启动一次,否则会有两个 ProcessingThread 并发跑)
                 main_window.show_processing_page()  # 切换到处理页面
                 print(f"已切换到处理页面，使用项目: {self.project_manager.project_name}")
-                
-                # 启动转写处理
-                QTimer.singleShot(500, main_window.processing_widget.start_processing)
-                print("已安排启动转写处理")
             else:
                 print("错误：未找到主窗口或 project_manager 未初始化")
         

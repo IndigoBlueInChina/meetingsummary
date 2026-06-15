@@ -11,9 +11,8 @@ from transcript_window import TranscriptWindow
 import os
 from history_window import HistoryWindow
 from pathlib import Path
-import tkinter as tk
-from tkinter import filedialog
 import shutil
+from PyQt6.QtWidgets import QFileDialog
 from utils.flexible_logger import Logger
 from summary_window import SummaryWindow
 from datetime import datetime
@@ -221,26 +220,13 @@ class MainWindow(QMainWindow):
     def import_audio_or_text(self):
         """打开文件选择对话框"""
         print("打开文件选择对话框-导入录音或文字稿")
-        
-        # 创建一个 Tkinter 根窗口并隐藏
-        root = tk.Tk()
-        root.withdraw()  # 隐藏主窗口
 
-        # 获取主窗口的位置
-        geometry = self.geometry()
-        x = geometry.x()
-        y = geometry.y()
-
-        # 设置 Tkinter 根窗口位置
-        root.geometry(f'400x200+{x+50}+{y+50}')  # 设置对话框位置
-
-        # 打开文件选择对话框
-        file_name = filedialog.askopenfilename(
-            title="导入录音或文字稿",
-            filetypes=[
-                ("音频文件", "*.wav;*.mp3;*.m4a"),
-                ("文本文件", "*.txt;*.docx;*.pdf")
-            ]
+        # 使用 PyQt6 原生文件对话框,避免与 PyQt event loop 冲突
+        file_name, _ = QFileDialog.getOpenFileName(
+            self,
+            "导入录音或文字稿",
+            "",
+            "音频文件 (*.wav *.mp3 *.m4a);;文本文件 (*.txt *.docx *.pdf);;所有文件 (*)"
         )
         
         if file_name:
