@@ -11,6 +11,23 @@ from utils.flexible_logger import Logger
 import traceback
 
 
+def _detect_audio_format(audio_file_path):
+    """根据扩展名返回 pydub 需要的 format 参数;None 让 pydub 自己探测。
+
+    调用方传入显式 format 可以跳过 ffprobe,避免 ffprobe 缺失时 FileNotFoundError。
+    """
+    ext = os.path.splitext(audio_file_path)[1].lower().lstrip(".")
+    mapping = {
+        "wav": "wav",
+        "mp3": "mp3",
+        "m4a": "m4a",
+        "aac": "aac",
+        "flac": "flac",
+        "ogg": "ogg",
+        "opus": "ogg",  # pydub 用 ogg 容器承载 opus
+    }
+    return mapping.get(ext)
+
 
 class ProcessingThread(QThread):
     progress_updated = pyqtSignal(str, int)  # 状态信息和进度值
@@ -29,8 +46,8 @@ class ProcessingThread(QThread):
             if not os.path.exists(audio_file_path):
                 raise FileNotFoundError(f"找不到音频文件: {audio_file_path}")
             
-            # 加载完整音频文件
-            audio = AudioSegment.from_file(audio_file_path)
+            # 加载完整音频文件(显式传入 format,避免 ffprobe 缺失)
+            audio = AudioSegment.from_file(audio_file_path, format=_detect_audio_format(audio_file_path))
             # 确保音频是单声道、16kHz采样率
             audio = audio.set_channels(1).set_frame_rate(16000)
             total_length = len(audio)

@@ -70,25 +70,30 @@ class SenseVoiceTranscriber:
 
             # 根据文件扩展名处理不同格式
             ext = os.path.splitext(audio_path)[1].lower()
-            
-            if ext in ['.wav', '.mp3']:
-                # 使用 pydub 加载音频
-                audio = AudioSegment.from_file(audio_path)
-                
+            # pydub 需要的是不含点的扩展名;显式传入可绕过 ffprobe
+            format_hint = ext.lstrip(".") if ext else None
+            # pydub 内部把 m4a 别名为 mp4,显式传 mp4 更稳
+            if format_hint == "m4a":
+                format_hint = "mp4"
+
+            if ext in ['.wav', '.mp3', '.m4a', '.aac', '.flac', '.ogg', '.opus']:
+                # 使用 pydub 加载音频(显式 format 避免 ffprobe 依赖)
+                audio = AudioSegment.from_file(audio_path, format=format_hint)
+
                 # 转换为单声道
                 if audio.channels > 1:
                     audio = audio.set_channels(1)
-                
+
                 # 设置采样率为 16kHz
                 if audio.frame_rate != 16000:
                     audio = audio.set_frame_rate(16000)
-                
+
                 # 转换为 numpy array
                 samples = np.array(audio.get_array_of_samples())
-                
+
                 # 转换为 float32 并归一化
                 samples = samples.astype(np.float32) / 32768.0
-                
+
                 return samples
             else:
                 raise ValueError(f"Unsupported audio format: {ext}")

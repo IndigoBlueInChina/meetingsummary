@@ -86,19 +86,24 @@ def merge_audio_files(audio_files, output_file, audio_format="opus", bitrate="64
         
         # 读取第一个文件作为基础（自动检测格式）
         first_file = audio_files[0]
-        if first_file.endswith('.wav'):
+        if first_file.lower().endswith('.wav'):
             combined = AudioSegment.from_wav(first_file)
         else:
-            combined = AudioSegment.from_file(first_file)
+            # 显式传入 format,避免 ffprobe 缺失
+            ext = os.path.splitext(first_file)[1].lower().lstrip('.')
+            fmt = 'ogg' if ext == 'opus' else ext or None
+            combined = AudioSegment.from_file(first_file, format=fmt)
         print(f"第一个文件时长: {len(combined)/1000:.2f}秒")
-        
+
         # 逐个添加其他文件
         for i, audio_file in enumerate(audio_files[1:], 1):
             print(f"正在添加第 {i+1} 个文件...")
-            if audio_file.endswith('.wav'):
+            if audio_file.lower().endswith('.wav'):
                 audio = AudioSegment.from_wav(audio_file)
             else:
-                audio = AudioSegment.from_file(audio_file)
+                ext = os.path.splitext(audio_file)[1].lower().lstrip('.')
+                fmt = 'ogg' if ext == 'opus' else ext or None
+                audio = AudioSegment.from_file(audio_file, format=fmt)
             combined += audio
             print(f"当前总时长: {len(combined)/1000:.2f}秒")
         
