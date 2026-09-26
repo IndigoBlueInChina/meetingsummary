@@ -266,7 +266,7 @@ def transcribe_audio(audio_input):
             raise ValueError(f"Unsupported input type: {type(audio_input)}")
             
     except Exception as e:
-        self.logger.error(f"Error in transcribe_audio: {str(e)}")
+        transcriber.logger.error(f"Error in transcribe_audio: {str(e)}")
         traceback.print_exc()
         raise
 
